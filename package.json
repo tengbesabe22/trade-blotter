@@ -1,0 +1,14 @@
+{
+  "name": "trade-blotter",
+  "private": true,
+  "packageManager": "pnpm@12.11.2",
+  "scripts": {
+    "dev": "pnpm --filter @trade-blotter/backend dev",
+    "build": "pnpm --filter @trade-blotter/backend build",
+    "start": "pnpm --filter @trade-blotter/backend start",
+    "typecheck": "pnpm --filter @trade-blotter/backend typecheck"
+  },
+  "engines": {
+    "node": ">=24.14.0 <25"
+  }
+}

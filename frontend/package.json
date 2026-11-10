@@ -1,0 +1,5 @@
+{
+  "name": "@trade-blotter/frontend",
+  "private": true,
+  "type": "module"
+}

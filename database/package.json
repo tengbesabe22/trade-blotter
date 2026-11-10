@@ -1,0 +1,5 @@
+{
+  "name": "@trade-blotter/database",
+  "private": true,
+  "type": "module"
+}
