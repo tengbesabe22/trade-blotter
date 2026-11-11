@@ -1,6 +1,6 @@
 # Trade Blotter
 
-TP ICAP take-home project, managed as a pnpm monorepo.
+Small trading platform application that allows users to view and manage a trade blotter containing equity trades
 
 ```text
 backend/    Hono + TypeScript Node.js starter
