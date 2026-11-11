@@ -4,21 +4,26 @@ import { bodyLimit } from 'hono/body-limit';
 type LoginCredentials = { email: string; password: string };
 export type LoginEnv = { Variables: { credentials: LoginCredentials } };
 
-export function requireLoginRequest(origin: string): MiddlewareHandler<LoginEnv> {
+export function requireTrustedOrigin(origin: string): MiddlewareHandler {
   return async (c, next) => {
-    // Cookies travel automatically: reject requests from other sites to prevent login CSRF.
+    // Cookies travel automatically: reject requests from other sites to prevent cross-site login/logout requests.
     if (c.req.header('Origin') !== origin) {
       return c.json({ code: 'FORBIDDEN_ORIGIN', message: 'Request origin is not allowed.' }, 403);
-    }
-
-    const contentType = c.req.header('Content-Type')?.split(';')[0].trim().toLowerCase();
-    if (contentType !== 'application/json') {
-      return c.json({ code: 'INVALID_INPUT', message: 'Send email and password as JSON.' }, 400);
     }
 
     await next();
   };
 }
+
+export const requireJsonLoginRequest: MiddlewareHandler<LoginEnv> = async (c, next) => {
+  const contentType = c.req.header('Content-Type')?.split(';')[0].trim().toLowerCase();
+
+  if (contentType !== 'application/json') {
+    return c.json({ code: 'INVALID_INPUT', message: 'Send email and password as JSON.' }, 400);
+  }
+
+  await next();
+};
 
 // Limit the body before parsing JSON or doing an expensive password check.
 export const loginBodyLimit = bodyLimit({

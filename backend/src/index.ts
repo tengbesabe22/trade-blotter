@@ -1,8 +1,8 @@
 import 'dotenv/config';
 import { serve } from '@hono/node-server';
 import { createDatabaseClient } from '@trade-blotter/database';
-import { createApp } from './app.js';
-import { createLoginStore } from './auth/login-store.js';
+import { createApp } from './app';
+import { createAuthStore } from './auth/auth-store';
 
 const connectionString = process.env.DATABASE_URL;
 
@@ -20,8 +20,8 @@ if (secureCookies && !origin.startsWith('https://')) {
 
 const prisma = createDatabaseClient(connectionString);
 
-const loginStore = createLoginStore(prisma);
-const app = createApp(loginStore, { origin, secureCookies });
+const authStore = createAuthStore(prisma);
+const app = createApp(authStore, { origin, secureCookies });
 
 serve({ fetch: app.fetch, port: Number(process.env.PORT ?? 3000) }, (info) => {
   console.log(`Server is running on http://localhost:${info.port}`);

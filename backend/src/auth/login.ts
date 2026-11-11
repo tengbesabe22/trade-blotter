@@ -1,33 +1,32 @@
-import { createHash, randomBytes } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import { Hono } from 'hono';
 import { setCookie } from 'hono/cookie';
-import type { LoginStore } from './login-store.js';
+import type { AuthStore } from './auth-store';
 import {
   type LoginEnv,
-  requireLoginRequest,
+  requireTrustedOrigin,
+  requireJsonLoginRequest,
   loginBodyLimit,
   validateLoginCredentials,
-} from './login-request.js';
-import { dummyPasswordHash, verifyPassword } from './password.js';
+} from './login-request';
+import { dummyPasswordHash, verifyPassword } from './password';
 
-// Cookies expect seconds; JavaScript dates expect milliseconds.
-const SESSION_DURATION_HOURS = 8;
-const SESSION_DURATION_SECONDS = SESSION_DURATION_HOURS * 60 * 60;
-const SESSION_DURATION_MS = SESSION_DURATION_SECONDS * 1000;
+import {
+  type AuthOptions,
+  SESSION_COOKIE_NAME,
+  SESSION_MAX_AGE_SECONDS,
+  SESSION_MAX_AGE_MS,
+  hashSessionToken,
+  sessionCookieOptions,
+} from './session';
 
-export type LoginOptions = { origin: string; secureCookies: boolean };
-
-export function createLoginRoutes(store: LoginStore, options: LoginOptions) {
+export function createLoginRoutes(store: AuthStore, options: AuthOptions) {
   const routes = new Hono<LoginEnv>();
-
-  routes.use('*', async (c, next) => {
-    c.header('Cache-Control', 'no-store');
-    await next();
-  });
 
   routes.post(
     '/login',
-    requireLoginRequest(options.origin),
+    requireTrustedOrigin(options.origin),
+    requireJsonLoginRequest,
     loginBodyLimit,
     validateLoginCredentials,
     async (c) => {
@@ -43,21 +42,20 @@ export function createLoginRoutes(store: LoginStore, options: LoginOptions) {
       }
 
       const token = randomBytes(32).toString('base64url');
+      const now = options.now?.() ?? new Date();
 
       await store.createSession({
         userId: user.id,
-        tokenHash: createHash('sha256').update(token).digest('hex'),
-        expiresAt: new Date(Date.now() + SESSION_DURATION_MS),
+        tokenHash: hashSessionToken(token),
+        lastSeenAt: now,
+        expiresAt: new Date(now.getTime() + SESSION_MAX_AGE_MS),
       });
 
       // Persist first: a failed database write must never issue a session cookie.
       // The browser gets the raw token; the database stores only its hash.
-      setCookie(c, 'blotter_session', token, {
-        httpOnly: true,
-        secure: options.secureCookies,
-        sameSite: 'Lax',
-        path: '/api',
-        maxAge: SESSION_DURATION_SECONDS,
+      setCookie(c, SESSION_COOKIE_NAME, token, {
+        ...sessionCookieOptions(options.secureCookies),
+        maxAge: SESSION_MAX_AGE_SECONDS,
       });
 
       return c.json({ user: { id: user.id, displayName: user.displayName, role: user.role } });

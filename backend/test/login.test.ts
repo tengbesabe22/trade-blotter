@@ -1,44 +1,18 @@
 import assert from 'node:assert/strict';
-import { createHash, scryptSync } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import test from 'node:test';
-import { createApp } from '../src/app.js';
-import type { LoginStore } from '../src/auth/login-store.js';
-import { verifyPassword } from '../src/auth/password.js';
+import { createApp } from '../src/app';
+import type { AuthStore } from '../src/auth/auth-store';
+import { verifyPassword } from '../src/auth/password';
+import { createAuthFixture, origin, password, user } from './auth-fixtures';
 
-const origin = 'http://localhost:5173';
-const salt = Buffer.alloc(16, 1);
-const password = 'Test password with spaces ';
-const key = scryptSync(password, salt, 64, {
-  N: 131072,
-  r: 8,
-  p: 1,
-  maxmem: 256 * 1024 * 1024,
-});
-const user = {
-  id: 'd197282d-99ca-4260-833a-702f97d1cba1',
-  displayName: 'JSMITH',
-  role: 'TRADER' as const,
-  passwordHash: `scrypt$131072$8$1$${salt.toString('hex')}$${key.toString('hex')}`,
-};
 const credentials = { email: 'jsmith@example.com', password };
 
-function setup(overrides: Partial<LoginStore> = {}, secureCookies = false) {
-  const sessions: Parameters<LoginStore['createSession']>[0][] = [];
-  const lookups: string[] = [];
-  const app = createApp(
-    {
-      findUser: async (email) => {
-        lookups.push(email);
-        return email === credentials.email ? user : null;
-      },
-      createSession: async (session) => {
-        sessions.push(session);
-      },
-      ...overrides,
-    },
-    { origin, secureCookies },
-  );
-  return { app, sessions, lookups };
+function setup(overrides: Partial<AuthStore> = {}, secureCookies = false) {
+  const fixture = createAuthFixture();
+  const app = createApp({ ...fixture.store, ...overrides }, { origin, secureCookies });
+
+  return { app, sessions: fixture.createdSessions, lookups: fixture.lookups };
 }
 
 function login(
