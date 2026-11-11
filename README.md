@@ -49,9 +49,43 @@ The example credentials are for local development only. The connection is
 - `pnpm db:up`: start PostgreSQL in the background and wait for health.
 - `pnpm db:logs`: follow PostgreSQL logs; Ctrl+C stops following, not the database.
 - `pnpm db:down`: stop containers while retaining the named data volume.
-- `pnpm db:validate`: validate the empty Prisma schema/configuration.
+- `pnpm db:validate`: validate the Prisma schema/configuration.
 
 The named volume is mounted at `/var/lib/postgresql`, as required by the
 PostgreSQL 18 image. Removing the volume deletes its database data.
-No models or migrations exist yet. Client generation and the runtime driver
-adapter will be added when we implement the first model and database query.
+The schema and initial migration define instruments, accounts, sessions, trades,
+outbox events, and idempotency requests.
+
+## Seed local data
+
+After applying migrations, run from the repository root:
+
+```sh
+pnpm db:seed
+```
+
+This generates Prisma Client and seeds 10 USD instruments, 3 individual trader
+accounts, 1 read-only reviewer, and 500 synthetic trades. Trades include both
+sides/statuses, fractional quantities, five execution dates, books/counterparties,
+and some empty optional metadata. The first trade matches the AAPL example's
+business fields; IDs use stable UUIDs. Prices and transactions are fictional.
+
+| Email | Role |
+| --- | --- |
+| `jsmith@example.com` | Trader |
+| `adoe@example.com` | Trader |
+| `mlee@example.com` | Trader |
+| `reviewer@example.com` | Read-only |
+
+Local demo password for each account: `LocalDemo!2026`. Login endpoints are not
+implemented yet. Passwords are stored as independently salted scrypt hashes:
+`scrypt$N$r$p$saltHex$hashHex` (N=131072, r=8, p=1, 64-byte key).
+The future login verifier must read this format. These are local demo credentials.
+
+Seeding is atomic and safe to rerun: existing instruments/accounts are preserved;
+fixed trade IDs skip existing fixtures without overwriting amendments or
+cancellations. No deletes or password resets occur. Sessions, outbox events,
+and idempotency records are runtime data and are not seeded or cleared.
+
+Database TypeScript check: `pnpm --filter @trade-blotter/database typecheck`
+(after client generation, which `pnpm db:seed` performs).

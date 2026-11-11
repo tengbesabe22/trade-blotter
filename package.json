@@ -13,7 +13,8 @@
     "db:validate": "pnpm --filter @trade-blotter/database validate",
     "db:migrate:create": "pnpm --filter @trade-blotter/database migrate:create",
     "db:migrate:dev": "pnpm --filter @trade-blotter/database migrate:dev",
-    "db:studio": "pnpm --filter @trade-blotter/database studio"
+    "db:studio": "pnpm --filter @trade-blotter/database studio",
+    "db:seed": "pnpm --filter @trade-blotter/database seed"
   },
   "engines": {
     "node": ">=24.14.0 <25"
