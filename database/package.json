@@ -1,5 +1,15 @@
 {
   "name": "@trade-blotter/database",
   "private": true,
-  "type": "module"
+  "type": "module",
+  "devDependencies": {
+    "dotenv": "18.0.10",
+    "prisma": "7.10.1"
+  },
+  "dependencies": {
+    "@prisma/client": "7.10.1"
+  },
+  "scripts": {
+    "validate": "prisma validate"
+  }
 }
