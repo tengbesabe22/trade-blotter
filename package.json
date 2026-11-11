@@ -10,7 +10,10 @@
     "db:up": "docker compose up -d --wait postgres",
     "db:down": "docker compose down",
     "db:logs": "docker compose logs -f postgres",
-    "db:validate": "pnpm --filter @trade-blotter/database validate"
+    "db:validate": "pnpm --filter @trade-blotter/database validate",
+    "db:migrate:create": "pnpm --filter @trade-blotter/database migrate:create",
+    "db:migrate:dev": "pnpm --filter @trade-blotter/database migrate:dev",
+    "db:studio": "pnpm --filter @trade-blotter/database studio"
   },
   "engines": {
     "node": ">=24.14.0 <25"

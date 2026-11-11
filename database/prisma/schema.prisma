@@ -6,3 +6,119 @@ generator client {
 datasource db {
   provider = "postgresql"
 }
+
+model Instrument {
+  id        String   @id @default(uuid()) @db.Uuid
+  symbol    String   @unique @db.VarChar(12)
+  name      String   @db.VarChar(120)
+  currency  String   @default("USD") @db.VarChar(3)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  trades    Trade[]
+}
+
+model User {
+  id                  String               @id @default(uuid()) @db.Uuid
+  displayName         String               @db.VarChar(120)
+  email               String               @unique @db.VarChar(120)
+  passwordHash        String               @db.VarChar(255)
+  role                Role                 @default(TRADER)
+  createdAt           DateTime             @default(now()) @db.Timestamptz(3)
+  trades              Trade[]
+  sessions            Session[]
+  outboxEvents        OutboxEvent[]
+  idempotencyRequests IdempotencyRequest[]
+}
+
+model Session {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String   @unique @db.VarChar(64)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  expiresAt DateTime @db.Timestamptz(3)
+
+  @@index([userId])
+}
+
+model Trade {
+  id           String        @id @default(uuid()) @db.Uuid
+  userId       String        @db.Uuid
+  user         User          @relation(fields: [userId], references: [id], onDelete: Restrict)
+  instrumentId String        @db.Uuid
+  instrument   Instrument    @relation(fields: [instrumentId], references: [id], onDelete: Restrict)
+  quantity     Decimal       @db.Decimal(20, 6)
+  price        Decimal       @db.Decimal(18, 4)
+  side         TradeSide
+  book         String?       @db.VarChar(64)
+  counterparty String?       @db.VarChar(120)
+  tradeDate    DateTime      @db.Timestamptz(3)
+  createdAt    DateTime      @default(now()) @db.Timestamptz(3)
+  /// Raw SQL updates must also explicitly set updatedAt.
+  updatedAt    DateTime      @default(now()) @updatedAt @db.Timestamptz(3)
+  status       TradeStatus   @default(ACTIVE)
+  version      Int           @default(1)
+  outboxEvents OutboxEvent[]
+
+  @@index([userId])
+  @@index([instrumentId])
+}
+
+model OutboxEvent {
+  id            String            @id @default(uuid()) @db.Uuid
+  type          TradeEventType
+  actorId       String            @db.Uuid
+  actor         User              @relation(fields: [actorId], references: [id], onDelete: Restrict)
+  tradeId       String            @db.Uuid
+  trade         Trade             @relation(fields: [tradeId], references: [id], onDelete: Restrict)
+  tradeVersion  Int
+  payload       Json              @db.JsonB
+  status        OutboxEventStatus @default(PENDING)
+  publishedAt   DateTime?         @db.Timestamptz(3)
+  retries       Int               @default(0)
+  /// Immediately eligible on creation; moved forward only for retry backoff.
+  nextAttemptAt DateTime          @default(now()) @db.Timestamptz(3)
+  lastError     String?           @db.Text
+  createdAt     DateTime          @default(now()) @db.Timestamptz(3)
+
+  @@unique([tradeId, tradeVersion])
+  @@index([status, nextAttemptAt, createdAt])
+}
+
+model IdempotencyRequest {
+  id                 String   @id @default(uuid()) @db.Uuid
+  userId             String   @db.Uuid
+  user               User     @relation(fields: [userId], references: [id], onDelete: Restrict)
+  key                String   @db.VarChar(120)
+  requestFingerprint String   @db.VarChar(64)
+  responseBody       Json     @db.JsonB
+  responseStatus     Int
+  createdAt          DateTime @default(now()) @db.Timestamptz(3)
+
+  @@unique([userId, key])
+}
+
+enum TradeSide {
+  BUY
+  SELL
+}
+
+enum TradeStatus {
+  ACTIVE
+  CANCELLED
+}
+
+enum Role {
+  TRADER
+  READ_ONLY
+}
+
+enum TradeEventType {
+  TRADE_CREATED
+  TRADE_AMENDED
+  TRADE_CANCELLED
+}
+
+enum OutboxEventStatus {
+  PENDING
+  PUBLISHED
+}

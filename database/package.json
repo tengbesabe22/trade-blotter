@@ -10,6 +10,9 @@
     "@prisma/client": "7.10.1"
   },
   "scripts": {
-    "validate": "prisma validate"
+    "validate": "prisma validate",
+    "migrate:create": "prisma migrate dev --create-only",
+    "migrate:dev": "prisma migrate dev",
+    "studio": "prisma studio"
   }
 }
