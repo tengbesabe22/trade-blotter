@@ -1,13 +1,28 @@
-import { serve } from '@hono/node-server'
-import { Hono } from 'hono'
+import 'dotenv/config';
+import { serve } from '@hono/node-server';
+import { createDatabaseClient } from '@trade-blotter/database';
+import { createApp } from './app.js';
+import { createLoginStore } from './auth/login-store.js';
 
-const app = new Hono()
+const connectionString = process.env.DATABASE_URL;
 
-app.get('/api/health', (c) => c.json({ status: 'ok' }))
+if (!connectionString) {
+  throw new Error('DATABASE_URL is required; check backend/.env.');
+}
 
-serve({
-  fetch: app.fetch,
-  port: 3000,
-}, (info) => {
-  console.log(`Server is running on http://localhost:${info.port}`)
-})
+const secureCookies = process.env.NODE_ENV === 'production';
+
+const origin = new URL(process.env.APP_ORIGIN ?? 'http://localhost:5173').origin;
+
+if (secureCookies && !origin.startsWith('https://')) {
+  throw new Error('APP_ORIGIN must use HTTPS in production.');
+}
+
+const prisma = createDatabaseClient(connectionString);
+
+const loginStore = createLoginStore(prisma);
+const app = createApp(loginStore, { origin, secureCookies });
+
+serve({ fetch: app.fetch, port: Number(process.env.PORT ?? 3000) }, (info) => {
+  console.log(`Server is running on http://localhost:${info.port}`);
+});

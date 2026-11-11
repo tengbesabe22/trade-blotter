@@ -171,6 +171,12 @@ importers:
       '@hono/node-server':
         specifier: ^2.1.3
         version: 2.1.6(hono@4.13.17)
+      '@trade-blotter/database':
+        specifier: workspace:*
+        version: link:../database
+      dotenv:
+        specifier: 18.0.10
+        version: 18.0.10
       hono:
         specifier: ^4.13.16
         version: 4.13.17

@@ -19,6 +19,13 @@
     "migrate:dev": "prisma migrate dev",
     "studio": "prisma studio",
     "seed": "prisma generate && prisma db seed",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build": "prisma generate && tsc -p tsconfig.build.json"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/src/client.d.ts",
+      "import": "./dist/src/client.js"
+    }
   }
 }
