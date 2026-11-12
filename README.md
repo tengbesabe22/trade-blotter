@@ -52,7 +52,8 @@ To run the frontend starter in another terminal:
 pnpm --filter @trade-blotter/frontend dev
 ```
 
-It is not connected to the API yet. See the [frontend guide](frontend/README.md).
+The `/api` dev proxy and auth client are configured; the page is still the starter.
+See the [frontend guide](frontend/README.md) for the request flow.
 
 ## Demo accounts
 
@@ -94,11 +95,12 @@ pnpm --filter @trade-blotter/frontend build
 ```
 
 Root typecheck/build commands build the database package first, then check/build
-the backend. `pnpm start` runs the compiled API. Frontend checks/build are separate.
+the backend. `pnpm test` runs both backend and frontend tests. `pnpm start` runs
+the compiled API. Frontend lint/build are separate.
 
 GitHub Actions runs these checks with a frozen install on pushes to `main`, pull
-requests, and manual dispatch. Automated tests use fake repositories/database
-operations; they do not need a running PostgreSQL instance.
+requests, and manual dispatch. Backend tests use fake repositories/database
+operations; frontend tests mock fetch. Neither needs a running PostgreSQL instance.
 
 Live database concurrency/rollback verification and p50/p95 measurements remain
 pending. Outbox records are stored; event dispatch and SSE are not implemented yet.

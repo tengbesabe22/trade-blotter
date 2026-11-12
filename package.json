@@ -15,7 +15,7 @@
     "db:migrate:dev": "pnpm --filter @trade-blotter/database migrate:dev",
     "db:studio": "pnpm --filter @trade-blotter/database studio",
     "db:seed": "pnpm --filter @trade-blotter/database seed",
-    "test": "pnpm --filter @trade-blotter/backend test",
+    "test": "pnpm --filter @trade-blotter/backend test && pnpm --filter @trade-blotter/frontend test",
     "test:trades": "pnpm --filter @trade-blotter/backend test:trades",
     "test:trade-create": "pnpm --filter @trade-blotter/backend test:trade-create"
   },
