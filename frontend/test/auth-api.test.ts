@@ -89,3 +89,12 @@ test('network failures propagate to the caller for UI error handling', async (t)
 
   await assert.rejects(authApi.me(), (error) => error === failure);
 });
+
+test('me forwards a cancellation signal to fetch', async (t) => {
+  const fetchMock = stubResponse(t, Response.json({ user }));
+  const controller = new AbortController();
+
+  await authApi.me(controller.signal);
+
+  assert.equal(fetchMock.mock.calls[0].arguments[1]?.signal, controller.signal);
+});

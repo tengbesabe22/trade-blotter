@@ -43,6 +43,14 @@ curl -i -b .cookies -c .cookies -X POST http://localhost:3000/api/auth/logout \
 Logout deletes the session and clears its cookie, returning `204`.
 Repeating logout is harmless; the revoked cookie can no longer authenticate.
 
+## Browser session restoration
+
+Refreshing the page calls `/api/auth/me` with the browser's session cookie.
+The UI waits for that check: a valid session restores the account, while `401`
+shows login. Network/server failures offer retry instead of assuming logout.
+Session checks are cancelled when obsolete; the frontend does not store tokens
+or user records in local storage.
+
 ## Session rules
 
 | Setting | Behavior |

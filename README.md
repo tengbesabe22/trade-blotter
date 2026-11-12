@@ -6,8 +6,8 @@ A TypeScript application for viewing and recording USD equity trades.
 creation with validation, idempotent retries, and transactional outbox storage.
 
 **Next:** amendment/cancellation, SSE delivery, the trading UI, and deployment.
-The frontend supports login, account display, and logout. Session restoration
-on refresh and the trading UI are still pending.
+The frontend supports login, account display, logout, and session restoration
+on refresh. The trading UI is still pending.
 
 ## Run locally
 

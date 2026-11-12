@@ -27,8 +27,8 @@ export const authApi = {
     return readAuthResponse(response);
   },
 
-  me: async (): Promise<AuthResponse> => {
-    const response = await apiRequest('/auth/me');
+  me: async (signal?: AbortSignal): Promise<AuthResponse> => {
+    const response = await apiRequest('/auth/me', { signal });
 
     return readAuthResponse(response);
   },

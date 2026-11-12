@@ -1,8 +1,8 @@
 # Frontend
 
 React + TypeScript + Vite, with Tailwind CSS and Oxlint.
-The login form, signed-in account panel, API client, and development proxy are
-implemented. Session restoration on refresh and the blotter grid are next.
+Login, logout, session restoration on refresh, the API client, and development
+proxy are implemented. The blotter grid is next.
 
 ## Commands
 
@@ -28,7 +28,7 @@ the origin aligned with the backend's local `APP_ORIGIN`. Build output is in
 | `src/api/api-client.ts` | Fetch wrapper, cookies, and structured HTTP errors |
 | `src/api/auth-api.ts` | Login, current-user, and logout calls |
 | `src/api/auth-contract.ts` | Browser-side request/response shapes and inferred types |
-| `src/App.tsx` | Holds the signed-in user and chooses the login/account view |
+| `src/App.tsx` | Restores the session and chooses checking, login, account, or retry views |
 | `src/auth/LoginForm.tsx` | Controlled email/password inputs, submission, pending state, and errors |
 | `src/auth/AccountPanel.tsx` | Account display and confirmed logout |
 | `src/index.css` | Global styles and Tailwind entry |
@@ -54,8 +54,20 @@ with `status`, `code`, and `message`; network failures propagate to the caller.
 and notifies the parent through `onSignedOut` after success. Each component owns
 its pending/error state. Passwords are kept only in the form's component state.
 
-The current user is held in React memory. Refresh currently shows the login form;
-restoring an existing session with `/me` is a separate upcoming slice.
+The current user is held in React memory. On every fresh app mount, including a
+refresh, `App` checks `/me` using the existing HttpOnly cookie:
+
+| Result | UI |
+| --- | --- |
+| Pending | Checking state; no login-form flash |
+| 200 | Restore the returned account and role |
+| 401 | Show the login form |
+| Network, server, or invalid-response error | Show a retry action |
+
+`authApi.me()` accepts an optional AbortSignal. Effect cleanup aborts obsolete
+checks and ignores their results, so a delayed response cannot restore an account
+after logout. Only startup and explicit retries perform this check; no background
+polling is added.
 
 The frontend keeps a small browser-safe auth contract; backend password/session
 implementation details are not imported. Business validation remains on the API.
