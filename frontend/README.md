@@ -1,8 +1,8 @@
 # Frontend
 
 React + TypeScript + Vite, with Tailwind CSS and Oxlint.
-The development API proxy and auth client are ready. The current page is still
-the starter; login UI and the blotter grid are next.
+The login form, signed-in account panel, API client, and development proxy are
+implemented. Session restoration on refresh and the blotter grid are next.
 
 ## Commands
 
@@ -17,7 +17,7 @@ pnpm --filter @trade-blotter/frontend build
 
 Vite uses `http://localhost:5173` and fails if the port is occupied. This keeps
 the origin aligned with the backend's local `APP_ORIGIN`. Build output is in
-`frontend/dist/`. Strict TypeScript checking covers source and API-client tests.
+`frontend/dist/`. Strict TypeScript checking covers source and frontend tests.
 
 ## File map
 
@@ -28,9 +28,10 @@ the origin aligned with the backend's local `APP_ORIGIN`. Build output is in
 | `src/api/api-client.ts` | Fetch wrapper, cookies, and structured HTTP errors |
 | `src/api/auth-api.ts` | Login, current-user, and logout calls |
 | `src/api/auth-contract.ts` | Browser-side request/response shapes and inferred types |
-| `src/App.tsx` | Root component and current starter page |
+| `src/App.tsx` | Holds the signed-in user and chooses the login/account view |
+| `src/auth/LoginForm.tsx` | Controlled email/password inputs, submission, pending state, and errors |
+| `src/auth/AccountPanel.tsx` | Account display and confirmed logout |
 | `src/index.css` | Global styles and Tailwind entry |
-| `src/App.css` | Starter component styles |
 | `src/assets/` | Imported images and SVGs |
 | `public/` | Static files copied to the build |
 | `vite.config.ts` | React/Tailwind plugins and local API proxy |
@@ -48,11 +49,19 @@ The API client leaves the browser's Origin header intact.
 `authApi.login()` and `authApi.me()` validate their JSON responses with Zod.
 `authApi.logout()` accepts an empty 204 response. HTTP failures throw `ApiError`
 with `status`, `code`, and `message`; network failures propagate to the caller.
-The UI will consume these methods in the next slice.
+`LoginForm` calls `authApi.login()` and passes the returned user to `App` through
+`onAuthenticated`. `App` renders `AccountPanel`, which calls `authApi.logout()`
+and notifies the parent through `onSignedOut` after success. Each component owns
+its pending/error state. Passwords are kept only in the form's component state.
+
+The current user is held in React memory. Refresh currently shows the login form;
+restoring an existing session with `/me` is a separate upcoming slice.
 
 The frontend keeps a small browser-safe auth contract; backend password/session
 implementation details are not imported. Business validation remains on the API.
 The dev proxy is not bundled into static output; production needs `/api` routing.
 
-`pnpm test` at the root runs backend tests and the fetch-mocked frontend tests.
+`pnpm test` at the root runs backend and frontend tests. API-client tests mock
+fetch. Component tests use Testing Library and a jsdom environment with the same
+Node/tsx runner; they test interactions, pending states, and failed requests.
 For backend setup, see the [project README](../README.md).

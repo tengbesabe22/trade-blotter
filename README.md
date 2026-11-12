@@ -6,7 +6,8 @@ A TypeScript application for viewing and recording USD equity trades.
 creation with validation, idempotent retries, and transactional outbox storage.
 
 **Next:** amendment/cancellation, SSE delivery, the trading UI, and deployment.
-The frontend currently contains the React/Vite starter.
+The frontend supports login, account display, and logout. Session restoration
+on refresh and the trading UI are still pending.
 
 ## Run locally
 
@@ -52,8 +53,8 @@ To run the frontend starter in another terminal:
 pnpm --filter @trade-blotter/frontend dev
 ```
 
-The `/api` dev proxy and auth client are configured; the page is still the starter.
-See the [frontend guide](frontend/README.md) for the request flow.
+The login page uses the `/api` dev proxy and auth client.
+See the [frontend guide](frontend/README.md) for the component and request flow.
 
 ## Demo accounts
 
@@ -100,7 +101,7 @@ the compiled API. Frontend lint/build are separate.
 
 GitHub Actions runs these checks with a frozen install on pushes to `main`, pull
 requests, and manual dispatch. Backend tests use fake repositories/database
-operations; frontend tests mock fetch. Neither needs a running PostgreSQL instance.
+operations; frontend API/component tests mock fetch. Neither needs a running PostgreSQL instance.
 
 Live database concurrency/rollback verification and p50/p95 measurements remain
 pending. Outbox records are stored; event dispatch and SSE are not implemented yet.
@@ -110,7 +111,7 @@ pending. Outbox records are stored; event dispatch and SSE are not implemented y
 | Location | Contents |
 | --- | --- |
 | `backend/` | Hono API, authentication, trade contracts, and repositories |
-| `frontend/` | React, TypeScript, Vite, Tailwind CSS, and Oxlint starter |
+| `frontend/` | React login/account UI, API client, Vite, Tailwind CSS, and Oxlint |
 | `database/` | Prisma schema/client, migrations, and rerun-safe seed |
 | `docs/` | Authentication and trade API guides |
 
