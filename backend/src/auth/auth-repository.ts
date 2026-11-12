@@ -1,26 +1,8 @@
 import type { DatabaseClient } from '@trade-blotter/database';
-import { SESSION_IDLE_TIMEOUT_MS } from './session';
-
-export type CurrentUser = {
-  id: string;
-  displayName: string;
-  role: 'TRADER' | 'READ_ONLY';
-};
+import type { CurrentUser, NewSession, StoredSession } from './auth-contract';
+import { SESSION_IDLE_TIMEOUT_MS } from './session-config';
 
 type LoginUser = CurrentUser & { passwordHash: string };
-
-export type NewSession = {
-  userId: string;
-  tokenHash: string;
-  lastSeenAt: Date;
-  expiresAt: Date;
-};
-
-export type StoredSession = {
-  user: CurrentUser;
-  lastSeenAt: Date;
-  expiresAt: Date;
-};
 
 export type AuthRepository = {
   findUser: (email: string) => Promise<LoginUser | null>;

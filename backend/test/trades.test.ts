@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import test from 'node:test';
 import { Prisma } from '@trade-blotter/database';
 import { createApp } from '../src/app';
-import type { CurrentUser } from '../src/auth/auth-repository';
+import type { CurrentUser } from '../src/auth/auth-contract';
 import type { TradeResponse } from '../src/trades/trade-contract';
 import { toTradeResponse } from '../src/trades/trade-mapper';
 import type { TradeRecord, TradeRepository } from '../src/trades/trade-repository';

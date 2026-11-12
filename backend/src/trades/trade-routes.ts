@@ -1,8 +1,7 @@
 import { Hono } from 'hono';
 import type { AuthRepository } from '../auth/auth-repository';
-import type { AuthOptions } from '../auth/session';
-import { requireTrustedOrigin } from '../auth/login-request';
-import { type AuthEnv, requireSession, requireTrader } from '../auth/session-middleware';
+import type { AuthEnv, AuthOptions } from '../auth/auth-contract';
+import { requireSession, requireTrader, requireTrustedOrigin } from '../auth/auth-middleware';
 import type { TradeRepository } from './trade-repository';
 import { toTradeResponse } from './trade-mapper';
 import { createTradeRequestSchema, idempotencyKeySchema } from './trade-create-contract';

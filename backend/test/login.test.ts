@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import test from 'node:test';
 import { createApp } from '../src/app';
 import type { AuthRepository } from '../src/auth/auth-repository';
-import { verifyPassword } from '../src/auth/password';
+import { verifyPassword } from '../src/auth/password-utils';
 import { createAuthFixture, origin, password, user } from './auth-fixtures';
 
 const credentials = { email: 'jsmith@example.com', password };
@@ -201,4 +201,15 @@ test('valid email and UTF-8 password boundaries reach authentication with JSON c
 
 test('password whitespace is significant', async () => {
   assert.equal(await verifyPassword(password.trim(), user.passwordHash), false);
+});
+
+test('login preserves the existing email syntax and UTF-16 length boundaries', async () => {
+  const { app, lookups } = setup();
+  const allowedEmail = 'first..last@example.com';
+  const longEmail = '😀'.repeat(55) + '@example.com'; // 122 UTF-16 code units.
+
+  // Keep the current format rule; switching to a stricter email validator is separate work.
+  assert.equal((await login(app, { email: allowedEmail, password })).status, 401);
+  assert.equal((await login(app, { email: longEmail, password })).status, 400);
+  assert.deepEqual(lookups, [allowedEmail]);
 });

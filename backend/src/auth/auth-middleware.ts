@@ -1,16 +1,20 @@
 import type { MiddlewareHandler } from 'hono';
 import { deleteCookie, getCookie } from 'hono/cookie';
-import type { AuthRepository, CurrentUser } from './auth-repository';
-import {
-  type AuthOptions,
-  SESSION_COOKIE_NAME,
-  SESSION_IDLE_TIMEOUT_MS,
-  hashSessionToken,
-  isValidSessionToken,
-  sessionCookieOptions,
-} from './session';
+import type { AuthRepository } from './auth-repository';
+import type { AuthEnv, AuthOptions } from './auth-contract';
+import { SESSION_COOKIE_NAME, SESSION_IDLE_TIMEOUT_MS } from './session-config';
+import { hashSessionToken, isValidSessionToken, sessionCookieOptions } from './session-utils';
 
-export type AuthEnv = { Variables: { user: CurrentUser } };
+export function requireTrustedOrigin(origin: string): MiddlewareHandler {
+  return async (c, next) => {
+    // Cookies travel automatically: reject requests from other sites to prevent cross-site login/logout requests.
+    if (c.req.header('Origin') !== origin) {
+      return c.json({ code: 'FORBIDDEN_ORIGIN', message: 'Request origin is not allowed.' }, 403);
+    }
+
+    await next();
+  };
+}
 
 type SessionBehavior = { recordActivity?: boolean };
 
@@ -56,7 +60,7 @@ export function requireSession(
   };
 }
 
-// Trade write routes will use this after requireSession, then check ownership.
+// Use after requireSession; amendment/cancellation handlers also check ownership.
 export const requireTrader: MiddlewareHandler<AuthEnv> = async (c, next) => {
   if (c.get('user').role !== 'TRADER') {
     return c.json({ code: 'FORBIDDEN', message: 'Trader access is required.' }, 403);

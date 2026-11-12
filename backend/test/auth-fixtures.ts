@@ -1,5 +1,6 @@
 import { scryptSync } from 'node:crypto';
-import type { AuthRepository, CurrentUser, NewSession } from '../src/auth/auth-repository';
+import type { AuthRepository } from '../src/auth/auth-repository';
+import type { CurrentUser, NewSession } from '../src/auth/auth-contract';
 
 export const origin = 'http://localhost:5173';
 export const password = 'Test password with spaces ';

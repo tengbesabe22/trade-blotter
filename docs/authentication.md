@@ -53,7 +53,7 @@ Repeating logout is harmless; the revoked cookie can no longer authenticate.
 | Cookie | HttpOnly, SameSite=Lax, Path=/api; Secure in production |
 | Token storage | Fresh random token per login; only its SHA-256 hash is stored |
 
-Timing constants are in [session.ts](../backend/src/auth/session.ts).
+Timing constants are in [session-config.ts](../backend/src/auth/session-config.ts).
 Invalid/expired sessions clear the cookie and require login again.
 Background/stream validation can avoid renewing idle time; stream cleanup will
 be wired when SSE is implemented.
@@ -71,11 +71,31 @@ be wired when SSE is implemented.
 
 Authentication and trade responses use `Cache-Control: no-store`.
 
-## Implementation and production plans
+## Code map
 
-Queries live in [auth-repository.ts](../backend/src/auth/auth-repository.ts).
+All feature files are in `backend/src/auth/`:
+
+| File | Responsibility |
+| --- | --- |
+| `auth-contract.ts` | Public user/response schemas and shared auth/session types |
+| `login-contract.ts` | Login request validation, normalization, and inferred types |
+| `auth-repository.ts` | Account and session queries |
+| `auth-middleware.ts` | Session, role, and trusted-Origin guards |
+| `login-middleware.ts` | JSON/body-size checks and parsing login credentials |
+| `login-routes.ts` | Login handler and session creation |
+| `session-routes.ts` | Current-user and logout handlers |
+| `session-config.ts` | Session duration, idle timeout, and cookie name |
+| `session-utils.ts` | Token hashing, token format, and cookie options |
+| `password-utils.ts` | Password verification and dummy hash |
+
+`LoginRequest` describes wire input; `NormalizedLoginRequest` describes parsed
+credentials. Zod preserves the existing validation rules. Extra login fields are
+ignored, and the account role always comes from the database.
+
 `requireSession` supplies the current user; `requireTrader` restricts writes.
 A conditional activity update prevents concurrent logout from reviving a session.
+
+## Production plans
 
 For production, consider organizational OIDC/SAML federation while retaining
 application-owned user IDs and permissions. Add shared login throttling at the

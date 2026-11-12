@@ -2,23 +2,21 @@ import { randomBytes } from 'node:crypto';
 import { Hono } from 'hono';
 import { setCookie } from 'hono/cookie';
 import type { AuthRepository } from './auth-repository';
+import type { AuthOptions, AuthResponse } from './auth-contract';
+import type { LoginEnv } from './login-contract';
+import { requireTrustedOrigin } from './auth-middleware';
 import {
-  type LoginEnv,
-  requireTrustedOrigin,
   requireJsonLoginRequest,
   loginBodyLimit,
   validateLoginCredentials,
-} from './login-request';
-import { dummyPasswordHash, verifyPassword } from './password';
-
+} from './login-middleware';
+import { dummyPasswordHash, verifyPassword } from './password-utils';
 import {
-  type AuthOptions,
   SESSION_COOKIE_NAME,
   SESSION_MAX_AGE_SECONDS,
   SESSION_MAX_AGE_MS,
-  hashSessionToken,
-  sessionCookieOptions,
-} from './session';
+} from './session-config';
+import { hashSessionToken, sessionCookieOptions } from './session-utils';
 
 export function createLoginRoutes(repository: AuthRepository, options: AuthOptions) {
   const routes = new Hono<LoginEnv>();
@@ -58,7 +56,11 @@ export function createLoginRoutes(repository: AuthRepository, options: AuthOptio
         maxAge: SESSION_MAX_AGE_SECONDS,
       });
 
-      return c.json({ user: { id: user.id, displayName: user.displayName, role: user.role } });
+      const response: AuthResponse = {
+        user: { id: user.id, displayName: user.displayName, role: user.role },
+      };
+
+      return c.json(response);
     },
   );
 

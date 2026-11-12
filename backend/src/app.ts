@@ -1,8 +1,8 @@
 import { Hono } from 'hono';
-import { createLoginRoutes } from './auth/login';
+import { createLoginRoutes } from './auth/login-routes';
 import type { AuthRepository } from './auth/auth-repository';
 import { createSessionRoutes } from './auth/session-routes';
-import type { AuthOptions } from './auth/session';
+import type { AuthOptions } from './auth/auth-contract';
 import type { TradeRepository } from './trades/trade-repository';
 import { createTradeRoutes } from './trades/trade-routes';
 

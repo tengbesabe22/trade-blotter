@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import test from 'node:test';
 import { createApp } from '../src/app';
-import type { CurrentUser } from '../src/auth/auth-repository';
+import type { CurrentUser } from '../src/auth/auth-contract';
 import type {
   CreateTradeCommand,
   NormalizedCreateTradeRequest,

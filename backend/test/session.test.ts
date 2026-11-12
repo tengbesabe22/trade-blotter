@@ -4,7 +4,8 @@ import test from 'node:test';
 import { Hono } from 'hono';
 import { createApp } from '../src/app';
 import type { AuthRepository } from '../src/auth/auth-repository';
-import { type AuthEnv, requireSession, requireTrader } from '../src/auth/session-middleware';
+import type { AuthEnv } from '../src/auth/auth-contract';
+import { requireSession, requireTrader } from '../src/auth/auth-middleware';
 import { createAuthFixture, origin, password, user } from './auth-fixtures';
 
 const minute = 60 * 1000;

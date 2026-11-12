@@ -1,21 +1,18 @@
 import { Hono } from 'hono';
 import { deleteCookie, getCookie } from 'hono/cookie';
 import type { AuthRepository } from './auth-repository';
-import { requireTrustedOrigin } from './login-request';
-import { type AuthEnv, requireSession } from './session-middleware';
-import {
-  type AuthOptions,
-  SESSION_COOKIE_NAME,
-  hashSessionToken,
-  isValidSessionToken,
-  sessionCookieOptions,
-} from './session';
+import type { AuthEnv, AuthOptions, AuthResponse } from './auth-contract';
+import { requireTrustedOrigin, requireSession } from './auth-middleware';
+import { SESSION_COOKIE_NAME } from './session-config';
+import { hashSessionToken, isValidSessionToken, sessionCookieOptions } from './session-utils';
 
 export function createSessionRoutes(repository: AuthRepository, options: AuthOptions) {
   const routes = new Hono<AuthEnv>();
 
   routes.get('/me', requireSession(repository, options), (c) => {
-    return c.json({ user: c.get('user') });
+    const response: AuthResponse = { user: c.get('user') };
+
+    return c.json(response);
   });
 
   routes.post('/logout', requireTrustedOrigin(options.origin), async (c) => {
