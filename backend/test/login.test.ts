@@ -11,7 +11,15 @@ const credentials = { email: 'jsmith@example.com', password };
 function setup(overrides: Partial<AuthRepository> = {}, secureCookies = false) {
   const fixture = createAuthFixture();
   const app = createApp(
-    { auth: { ...fixture.repository, ...overrides }, trades: { list: async () => [] } },
+    {
+      auth: { ...fixture.repository, ...overrides },
+      trades: {
+        list: async () => [],
+        create: async () => {
+          throw new Error('Unexpected trade creation in auth test.');
+        },
+      },
+    },
     { origin, secureCookies },
   );
 

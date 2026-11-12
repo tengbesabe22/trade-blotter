@@ -26,7 +26,18 @@ async function setup(overrides: Partial<AuthRepository> = {}) {
   });
 
   const repository = { ...fixture.repository, ...overrides };
-  const app = createApp({ auth: repository, trades: { list: async () => [] } }, options);
+  const app = createApp(
+    {
+      auth: repository,
+      trades: {
+        list: async () => [],
+        create: async () => {
+          throw new Error('Unexpected trade creation in auth test.');
+        },
+      },
+    },
+    options,
+  );
 
   function request(path = '/api/auth/me', init: RequestInit = {}) {
     const headers = new Headers({ Cookie: cookie, Origin: origin });

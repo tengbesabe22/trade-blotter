@@ -4,7 +4,8 @@ import test from 'node:test';
 import { Prisma } from '@trade-blotter/database';
 import { createApp } from '../src/app';
 import type { CurrentUser } from '../src/auth/auth-repository';
-import { toTradeResponse, type TradeResponse } from '../src/trades/trade-contract';
+import type { TradeResponse } from '../src/trades/trade-contract';
+import { toTradeResponse } from '../src/trades/trade-mapper';
 import type { TradeRecord, TradeRepository } from '../src/trades/trade-repository';
 import { createAuthFixture, origin, user } from './auth-fixtures';
 
@@ -92,6 +93,10 @@ async function setup(options: SetupOptions = {}) {
 
   // Persistence is fake. Decimal values are real value objects, not DB connections.
   const trades: TradeRepository = {
+    create: async () => {
+      throw new Error('Unexpected trade creation in list test.');
+    },
+
     list: async () => {
       calls.list += 1;
 

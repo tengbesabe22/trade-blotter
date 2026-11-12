@@ -1,77 +1,62 @@
 # Trade Blotter
 
-Small trading platform application that allows users to view and manage a trade blotter containing equity trades
+A TypeScript application for viewing and recording USD equity trades.
 
-```text
-backend/    Hono + TypeScript API
-frontend/   React + TypeScript + Vite
-database/   Prisma models, client, migrations, and seeds
-```
+**Working:** individual login/logout, database sessions, trade listing, and trade
+creation with validation, idempotent retries, and transactional outbox storage.
 
-## Run the backend
+**Next:** amendment/cancellation, SSE delivery, the trading UI, and deployment.
+The frontend currently contains the React/Vite starter.
 
-Use Node 24.14.0 and pnpm 12.11.2. From the repository root:
+## Run locally
+
+Use Node **24.14.0**, pnpm **12.11.2**, and a running Docker engine.
+Run these commands from the repository root.
+
+### 1. Install and configure
 
 ```sh
 pnpm install --frozen-lockfile
 cp backend/.env.example backend/.env
-pnpm dev
+cp database/.env.example database/.env
 ```
 
-`GET http://localhost:3000/api/health` returns `{"status":"ok"}`.
-Use `Copy-Item` instead of `cp` on PowerShell. Backend configuration comes from
-`backend/.env` or injected environment variables; the database CLI still uses
-`database/.env`. Root dev/build/typecheck commands build the database package first.
+On PowerShell, use `Copy-Item` in place of `cp`.
+The API reads `backend/.env`; Prisma CLI commands read `database/.env`.
+The examples point both to the same local database.
 
-## Check and build
-
-```sh
-pnpm typecheck
-pnpm build
-pnpm start
-```
-
-GitHub Actions runs a frozen install, backend type check, login tests, and build on pushes
-to main, pull requests, and manual dispatch. Backend session authentication is implemented; trade endpoints and the business UI are next.
-
-## Local PostgreSQL and Prisma
-
-PostgreSQL 18.6 runs in Docker; Prisma CLI/client are pinned to stable 7.10.1.
-Start Docker Desktop first. From the repository root:
+### 2. Prepare the database
 
 ```sh
 pnpm db:up
-pnpm db:validate
-```
-
-For a fresh checkout, copy `database/.env.example` to `database/.env`
-(`cp` on macOS/Linux or `Copy-Item` on PowerShell) before running Prisma.
-The example credentials are for local development only. The connection is
-`localhost:5432`; the Docker port binds only to the local machine.
-
-- `pnpm db:up`: start PostgreSQL in the background and wait for health.
-- `pnpm db:logs`: follow PostgreSQL logs; Ctrl+C stops following, not the database.
-- `pnpm db:down`: stop containers while retaining the named data volume.
-- `pnpm db:validate`: validate the Prisma schema/configuration.
-
-The named volume is mounted at `/var/lib/postgresql`, as required by the
-PostgreSQL 18 image. Removing the volume deletes its database data.
-The schema and initial migration define instruments, accounts, sessions, trades,
-outbox events, and idempotency requests.
-
-## Seed local data
-
-After applying migrations, run from the repository root:
-
-```sh
+pnpm db:migrate:dev
 pnpm db:seed
 ```
 
-This generates Prisma Client and seeds 10 USD instruments, 3 individual trader
-accounts, 1 read-only reviewer, and 500 synthetic trades. Trades include both
-sides/statuses, fractional quantities, five execution dates, books/counterparties,
-and some empty optional metadata. The first trade matches the AAPL example's
-business fields; IDs use stable UUIDs. Prices and transactions are fictional.
+PostgreSQL starts in the background on `localhost:5432`.
+Seeding creates 10 instruments, 4 accounts, and 500 synthetic trades.
+Rerunning the seed preserves existing records, passwords, and trade changes.
+
+### 3. Start the API
+
+```sh
+pnpm dev
+```
+
+The API runs at `http://localhost:3000`.
+Check `GET /api/health` for `{"status":"ok"}`.
+
+To run the frontend starter in another terminal:
+
+```sh
+pnpm --filter @trade-blotter/frontend dev
+```
+
+It is not connected to the API yet. See the [frontend guide](frontend/README.md).
+
+## Demo accounts
+
+All four accounts use the local demo password **`LocalDemo!2026`**.
 
 | Email | Role |
 | --- | --- |
@@ -80,108 +65,68 @@ business fields; IDs use stable UUIDs. Prices and transactions are fictional.
 | `mlee@example.com` | Trader |
 | `reviewer@example.com` | Read-only |
 
-Local demo password for each account: `LocalDemo!2026`. The backend login endpoint is implemented. Passwords are stored as independently salted scrypt hashes:
-`scrypt$N$r$p$saltHex$hashHex` (N=131072, r=8, p=1, 64-byte key).
-The login verifier reads this format. These are local demo credentials.
+Both roles can list all trades. Only traders can create trades; ownership comes
+from the session. Ownership restrictions for amendment/cancellation are planned.
+All seeded trades and prices are fictional.
 
-Seeding is atomic and safe to rerun: existing instruments/accounts are preserved;
-fixed trade IDs skip existing fixtures without overwriting amendments or
-cancellations. No deletes or password resets occur. Sessions, outbox events,
-and idempotency records are runtime data and are not seeded or cleared.
+## API guide
 
-Database TypeScript check: `pnpm --filter @trade-blotter/database typecheck`
-(after client generation, which `pnpm db:seed` performs).
+| Method | Endpoint | Purpose |
+| --- | --- | --- |
+| GET | `/api/health` | Health check |
+| POST | `/api/auth/login` | Sign in with email/password |
+| GET | `/api/auth/me` | Read the current account and role |
+| POST | `/api/auth/logout` | Revoke the current session |
+| GET | `/api/trades` | List trades as `{ "trades": [...] }` |
+| POST | `/api/trades` | Create a trade or replay its saved response |
 
+Start with [authentication and curl examples](docs/authentication.md), then
+[creating a trade](docs/trade-create-api.md).
 
-## Backend authentication
-
-With PostgreSQL migrated/seeded and the backend running, send:
-
-```sh
-curl -i -c .cookies http://localhost:3000/api/auth/login \
-  -H 'Origin: http://localhost:5173' \
-  -H 'Content-Type: application/json' \
-  --data '{"email":"jsmith@example.com","password":"LocalDemo!2026"}'
-```
-
-The response is `{ "user": { "id": "...", "displayName": "JSMITH", "role": "TRADER" } }`
-with an HttpOnly `blotter_session` cookie. Each login creates a fresh 32-byte random
-token; only its SHA-256 hash is stored, with an eight-hour absolute expiry.
-The server also rejects sessions after five minutes without authenticated activity.
-Valid authenticated requests update `Session.lastSeenAt` without extending the
-eight-hour maximum. Timing constants live in `backend/src/auth/session.ts`.
-The browser uses the session cookie; no access/refresh-token pair is required.
-[OWASP session expiry guidance](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html#session-expiration).
-
-The cookie uses `SameSite=Lax`, `Path=/api`, and `Secure` in production.
-Set `APP_ORIGIN` to the browser UI origin; production requires HTTPS. Login requires
-JSON and an exact matching Origin header, including terminal clients.
-
-Email is trimmed/lowercased; passwords are preserved exactly and verified with
-the seeded scrypt format. Unknown accounts and wrong passwords receive the same
-401 response; unknown accounts still perform a scrypt check. Login responses are
-not cacheable. The local demo has no application-level login rate or concurrency
-limiter; session records remain in PostgreSQL.
-
-`GET /api/auth/me` returns the current database user/role or 401, clearing an
-invalid or expired cookie. `POST /api/auth/logout` requires the trusted Origin,
-deletes the current database session, clears its cookie, and returns 204.
-Repeated logout is harmless. A copied/replayed cookie fails after logout.
-
-After logging in with the cookie jar above:
+## Checks and build
 
 ```sh
-curl -i -b .cookies -c .cookies http://localhost:3000/api/auth/me
-curl -i -b .cookies -c .cookies -X POST http://localhost:3000/api/auth/logout \
-  -H 'Origin: http://localhost:5173'
+pnpm typecheck
+pnpm test
+pnpm build
+pnpm --filter @trade-blotter/frontend lint
+pnpm --filter @trade-blotter/frontend build
 ```
 
-Startup wires the database client and `createAuthRepository` adapter into the app.
-Prisma queries live in `backend/src/auth/auth-repository.ts`. `requireSession` validates
-cookies and supplies the current user to route handlers. `requireTrader` provides
-the role guard for upcoming trade writes; those routes must also check ownership.
-Session activity updates use a conditional database write so concurrent logout
-cannot revive a deleted session. Stream/background validation can pass
-`{ recordActivity: false }`; SSE messages must not keep an idle session alive.
-Stream connection cleanup will be connected when SSE is implemented.
+Root typecheck/build commands build the database package first, then check/build
+the backend. `pnpm start` runs the compiled API. Frontend checks/build are separate.
 
-The additive `add_session_last_seen_at` migration stores shared idle activity.
-Run `pnpm db:migrate:dev` after updating a local checkout. Older sessions are
-backfilled from creation time, so an old cookie may require a fresh login.
+GitHub Actions runs these checks with a frozen install on pushes to `main`, pull
+requests, and manual dispatch. Automated tests use fake repositories/database
+operations; they do not need a running PostgreSQL instance.
 
-### Authentication tests
+Live database concurrency/rollback verification and p50/p95 measurements remain
+pending. Outbox records are stored; event dispatch and SSE are not implemented yet.
 
-`pnpm test` runs password, login, session-expiry, logout, and role-guard tests.
-Fake repositories and an injectable clock keep these tests independent of PostgreSQL
-and avoid waiting for actual timeouts.
-`pnpm typecheck` checks source and test files. CI runs these checks and the builds.
+## Project map
 
-### Production authentication
+| Location | Contents |
+| --- | --- |
+| `backend/` | Hono API, authentication, trade contracts, and repositories |
+| `frontend/` | React, TypeScript, Vite, Tailwind CSS, and Oxlint starter |
+| `database/` | Prisma schema/client, migrations, and rerun-safe seed |
+| `docs/` | Authentication and trade API guides |
 
-Use organizational federation through OIDC or SAML for sign-in while retaining
-application-owned user IDs, database roles, and trade-ownership rules.
-Enforce login throttling at the identity provider/API gateway with limits
-consistent across backend instances, rather than process-local counters. If local
-password login is retained, also bound password-verification load before public
-exposure. These production controls are documented future work, not implemented
-services. [OWASP authentication guidance](https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html).
+New behavior follows test-driven development. Keep changes small, readable, and
+terminated with semicolons. See [AGENTS.md](AGENTS.md) for collaboration conventions.
 
+Backend imports are extension-free. `tsx` runs development source; esbuild bundles
+local modules for Node, keeping package dependencies external.
 
-## Development workflow
+## Database commands
 
-New behavior follows test-driven development: failing test, minimal implementation,
-then refactoring. Keep changes small, readable, and consistently terminated with
-semicolons. Project guidance is in [AGENTS.md](AGENTS.md).
+| Command | Use |
+| --- | --- |
+| `pnpm db:logs` | Follow PostgreSQL logs; Ctrl+C stops following |
+| `pnpm db:down` | Stop containers while retaining database data |
+| `pnpm db:validate` | Validate the Prisma schema/configuration |
+| `pnpm db:migrate:create` | Generate a migration for review without applying it |
+| `pnpm db:migrate:dev` | Apply migrations to the local development database |
+| `pnpm db:studio` | Open Prisma Studio |
 
-
-### Backend imports and build
-
-Backend source and tests use extension-free local imports such as
-`import { createApp } from './app';`. TypeScript uses `module: ESNext` and
-`moduleResolution: Bundler` for checking; `tsx` runs source during development.
-`backend/build.mjs` uses esbuild to bundle local modules into `dist/index.js`
-for `pnpm start`. npm/workspace dependencies stay external; the database package
-keeps its separate build. Changing TypeScript resolution alone would leave plain
-Node ESM unable to load extension-free relative imports.
-[TypeScript resolution](https://www.typescriptlang.org/tsconfig/#moduleResolution),
-[esbuild package handling](https://esbuild.github.io/api/#packages).
+The named Docker volume preserves local data. Removing that volume deletes it.

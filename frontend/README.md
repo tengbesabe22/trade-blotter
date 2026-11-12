@@ -1,32 +1,37 @@
-# React + TypeScript + Vite
+# Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+React + TypeScript + Vite, with Tailwind CSS and Oxlint.
+The current page is the starter; login, the blotter grid, and API integration
+are planned.
 
-Currently, two official plugins are available:
+## Commands
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+Run from the repository root after `pnpm install --frozen-lockfile`:
 
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```sh
+pnpm --filter @trade-blotter/frontend dev
+pnpm --filter @trade-blotter/frontend lint
+pnpm --filter @trade-blotter/frontend build
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+Vite prints the local development URL, normally `http://localhost:5173`.
+Build output is in `frontend/dist/`.
+
+## File map
+
+| File | Purpose |
+| --- | --- |
+| `index.html` | HTML entry point |
+| `src/main.tsx` | Mounts React |
+| `src/App.tsx` | Root component and current starter page |
+| `src/index.css` | Global styles and Tailwind entry |
+| `src/App.css` | Starter component styles |
+| `src/assets/` | Imported images and SVGs |
+| `public/` | Static files copied to the build |
+| `vite.config.ts` | React and Tailwind plugins |
+| `.oxlintrc.json` | Lint rules |
+| `tsconfig*.json` | TypeScript settings |
+| `package.json` | Frontend dependencies and scripts |
+
+API proxying and browser authentication are not configured yet.
+For backend setup, see the [project README](../README.md).

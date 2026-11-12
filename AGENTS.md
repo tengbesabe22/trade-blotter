@@ -5,6 +5,7 @@
 - Work in small, reviewable feature slices. Prioritize clear names, explicit units, useful whitespace, and comments explaining non-obvious decisions.
 - Use semicolons consistently in JavaScript and TypeScript. Backend local imports are extension-free and are resolved by its bundler.
 - Keep persistence queries in typed feature repositories; keep startup focused on wiring dependencies and starting the server.
+- Use Zod schemas for new API contracts and runtime request validation. Infer TypeScript contract types from schemas; keep normalization explicit and decimal values exact. Migrate existing contracts in focused changes.
 - Use clear, product-focused wording in code and documentation.
 - Do not commit or push unless the user requests it.
 
