@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { deleteCookie, getCookie } from 'hono/cookie';
-import type { AuthStore } from './auth-store';
+import type { AuthRepository } from './auth-repository';
 import { requireTrustedOrigin } from './login-request';
 import { type AuthEnv, requireSession } from './session-middleware';
 import {
@@ -11,10 +11,10 @@ import {
   sessionCookieOptions,
 } from './session';
 
-export function createSessionRoutes(store: AuthStore, options: AuthOptions) {
+export function createSessionRoutes(repository: AuthRepository, options: AuthOptions) {
   const routes = new Hono<AuthEnv>();
 
-  routes.get('/me', requireSession(store, options), (c) => {
+  routes.get('/me', requireSession(repository, options), (c) => {
     return c.json({ user: c.get('user') });
   });
 
@@ -23,7 +23,7 @@ export function createSessionRoutes(store: AuthStore, options: AuthOptions) {
 
     if (isValidSessionToken(token)) {
       // Delete server-side first; clearing a cookie alone does not revoke a session.
-      await store.deleteSession(hashSessionToken(token));
+      await repository.deleteSession(hashSessionToken(token));
     }
 
     deleteCookie(c, SESSION_COOKIE_NAME, sessionCookieOptions(options.secureCookies));

@@ -136,8 +136,8 @@ curl -i -b .cookies -c .cookies -X POST http://localhost:3000/api/auth/logout \
   -H 'Origin: http://localhost:5173'
 ```
 
-Startup wires the database client and `createAuthStore` adapter into the app.
-Prisma queries live in `backend/src/auth/auth-store.ts`. `requireSession` validates
+Startup wires the database client and `createAuthRepository` adapter into the app.
+Prisma queries live in `backend/src/auth/auth-repository.ts`. `requireSession` validates
 cookies and supplies the current user to route handlers. `requireTrader` provides
 the role guard for upcoming trade writes; those routes must also check ownership.
 Session activity updates use a conditional database write so concurrent logout
@@ -152,7 +152,7 @@ backfilled from creation time, so an old cookie may require a fresh login.
 ### Authentication tests
 
 `pnpm test` runs password, login, session-expiry, logout, and role-guard tests.
-Fake stores and an injectable clock keep these tests independent of PostgreSQL
+Fake repositories and an injectable clock keep these tests independent of PostgreSQL
 and avoid waiting for actual timeouts.
 `pnpm typecheck` checks source and test files. CI runs these checks and the builds.
 
@@ -167,12 +167,11 @@ exposure. These production controls are documented future work, not implemented
 services. [OWASP authentication guidance](https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html).
 
 
-## Development workflow and AI use
+## Development workflow
 
 New behavior follows test-driven development: failing test, minimal implementation,
 then refactoring. Keep changes small, readable, and consistently terminated with
-semicolons. Project guidance is in [AGENTS.md](AGENTS.md); selected AI contributions,
-developer decisions, and verified results are in the [AI usage report](docs/ai-usage.md).
+semicolons. Project guidance is in [AGENTS.md](AGENTS.md).
 
 
 ### Backend imports and build

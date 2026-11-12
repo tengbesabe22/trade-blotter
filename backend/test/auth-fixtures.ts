@@ -1,5 +1,5 @@
 import { scryptSync } from 'node:crypto';
-import type { AuthStore, CurrentUser, NewSession } from '../src/auth/auth-store';
+import type { AuthRepository, CurrentUser, NewSession } from '../src/auth/auth-repository';
 
 export const origin = 'http://localhost:5173';
 export const password = 'Test password with spaces ';
@@ -25,7 +25,7 @@ export function createAuthFixture() {
   const createdSessions: NewSession[] = [];
   const lookups: string[] = [];
 
-  const store: AuthStore = {
+  const repository: AuthRepository = {
     findUser: async (email) => {
       lookups.push(email);
 
@@ -65,5 +65,5 @@ export function createAuthFixture() {
     },
   };
 
-  return { store, users, sessions, createdSessions, lookups };
+  return { repository, users, sessions, createdSessions, lookups };
 }

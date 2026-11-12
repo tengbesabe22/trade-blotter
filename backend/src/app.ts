@@ -1,11 +1,15 @@
 import { Hono } from 'hono';
 import { createLoginRoutes } from './auth/login';
-import type { AuthStore } from './auth/auth-store';
+import type { AuthRepository } from './auth/auth-repository';
 import { createSessionRoutes } from './auth/session-routes';
 import type { AuthOptions } from './auth/session';
+import type { TradeRepository } from './trades/trade-repository';
+import { createTradeRoutes } from './trades/trade-routes';
+
+export type AppRepositories = { auth: AuthRepository; trades: TradeRepository };
 
 // Separate app construction from the listening server so requests are testable.
-export function createApp(store: AuthStore, options: AuthOptions) {
+export function createApp(repositories: AppRepositories, options: AuthOptions) {
   const app = new Hono();
 
   app.get('/api/health', (c) => c.json({ status: 'ok' }));
@@ -16,8 +20,9 @@ export function createApp(store: AuthStore, options: AuthOptions) {
     await next();
   });
 
-  app.route('/api/auth', createLoginRoutes(store, options));
-  app.route('/api/auth', createSessionRoutes(store, options));
+  app.route('/api/auth', createLoginRoutes(repositories.auth, options));
+  app.route('/api/auth', createSessionRoutes(repositories.auth, options));
+  app.route('/api/trades', createTradeRoutes(repositories.auth, repositories.trades, options));
 
   app.onError((error, c) => {
     console.error('Request failed:', error.name);

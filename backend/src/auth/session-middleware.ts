@@ -1,6 +1,6 @@
 import type { MiddlewareHandler } from 'hono';
 import { deleteCookie, getCookie } from 'hono/cookie';
-import type { AuthStore, CurrentUser } from './auth-store';
+import type { AuthRepository, CurrentUser } from './auth-repository';
 import {
   type AuthOptions,
   SESSION_COOKIE_NAME,
@@ -15,7 +15,7 @@ export type AuthEnv = { Variables: { user: CurrentUser } };
 type SessionBehavior = { recordActivity?: boolean };
 
 export function requireSession(
-  store: AuthStore,
+  repository: AuthRepository,
   options: AuthOptions,
   behavior: SessionBehavior = {},
 ): MiddlewareHandler<AuthEnv> {
@@ -24,7 +24,7 @@ export function requireSession(
 
     const token = getCookie(c, SESSION_COOKIE_NAME);
     const tokenHash = isValidSessionToken(token) ? hashSessionToken(token) : null;
-    const session = tokenHash ? await store.findSession(tokenHash) : null;
+    const session = tokenHash ? await repository.findSession(tokenHash) : null;
     const now = options.now?.() ?? new Date();
     const idleCutoff = now.getTime() - SESSION_IDLE_TIMEOUT_MS;
 
@@ -41,7 +41,7 @@ export function requireSession(
 
     // Stream reconnects/background checks can validate without extending idle time.
     if (behavior.recordActivity !== false) {
-      const updated = await store.touchSession(tokenHash, now);
+      const updated = await repository.touchSession(tokenHash, now);
 
       if (!updated) {
         deleteCookie(c, SESSION_COOKIE_NAME, sessionCookieOptions(options.secureCookies));

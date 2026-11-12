@@ -2,15 +2,18 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import test from 'node:test';
 import { createApp } from '../src/app';
-import type { AuthStore } from '../src/auth/auth-store';
+import type { AuthRepository } from '../src/auth/auth-repository';
 import { verifyPassword } from '../src/auth/password';
 import { createAuthFixture, origin, password, user } from './auth-fixtures';
 
 const credentials = { email: 'jsmith@example.com', password };
 
-function setup(overrides: Partial<AuthStore> = {}, secureCookies = false) {
+function setup(overrides: Partial<AuthRepository> = {}, secureCookies = false) {
   const fixture = createAuthFixture();
-  const app = createApp({ ...fixture.store, ...overrides }, { origin, secureCookies });
+  const app = createApp(
+    { auth: { ...fixture.repository, ...overrides }, trades: { list: async () => [] } },
+    { origin, secureCookies },
+  );
 
   return { app, sessions: fixture.createdSessions, lookups: fixture.lookups };
 }

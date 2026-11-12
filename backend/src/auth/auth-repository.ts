@@ -22,7 +22,7 @@ export type StoredSession = {
   expiresAt: Date;
 };
 
-export type AuthStore = {
+export type AuthRepository = {
   findUser: (email: string) => Promise<LoginUser | null>;
   createSession: (session: NewSession) => Promise<void>;
   findSession: (tokenHash: string) => Promise<StoredSession | null>;
@@ -33,8 +33,8 @@ export type AuthStore = {
 type AuthDatabase = Pick<DatabaseClient, 'user' | 'session'>;
 const publicUserFields = { id: true, displayName: true, role: true } as const;
 
-// Prisma queries stay behind this feature adapter; request tests use a fake store.
-export function createAuthStore(database: AuthDatabase): AuthStore {
+// Prisma queries stay behind this feature adapter; request tests use a fake repository.
+export function createAuthRepository(database: AuthDatabase): AuthRepository {
   return {
     findUser: (email) =>
       database.user.findUnique({

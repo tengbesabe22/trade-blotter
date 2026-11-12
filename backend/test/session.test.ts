@@ -3,14 +3,14 @@ import { createHash } from 'node:crypto';
 import test from 'node:test';
 import { Hono } from 'hono';
 import { createApp } from '../src/app';
-import type { AuthStore } from '../src/auth/auth-store';
+import type { AuthRepository } from '../src/auth/auth-repository';
 import { type AuthEnv, requireSession, requireTrader } from '../src/auth/session-middleware';
 import { createAuthFixture, origin, password, user } from './auth-fixtures';
 
 const minute = 60 * 1000;
 const hour = 60 * minute;
 
-async function setup(overrides: Partial<AuthStore> = {}) {
+async function setup(overrides: Partial<AuthRepository> = {}) {
   const fixture = createAuthFixture();
   let time = Date.parse('2026-11-11T09:00:00Z');
   const options = { origin, secureCookies: false, now: () => new Date(time) };
@@ -18,15 +18,15 @@ async function setup(overrides: Partial<AuthStore> = {}) {
   const tokenHash = createHash('sha256').update(token).digest('hex');
   const cookie = `blotter_session=${token}`;
 
-  await fixture.store.createSession({
+  await fixture.repository.createSession({
     userId: user.id,
     tokenHash,
     lastSeenAt: options.now(),
     expiresAt: new Date(time + 8 * hour),
   });
 
-  const store = { ...fixture.store, ...overrides };
-  const app = createApp(store, options);
+  const repository = { ...fixture.repository, ...overrides };
+  const app = createApp({ auth: repository, trades: { list: async () => [] } }, options);
 
   function request(path = '/api/auth/me', init: RequestInit = {}) {
     const headers = new Headers({ Cookie: cookie, Origin: origin });
@@ -38,7 +38,7 @@ async function setup(overrides: Partial<AuthStore> = {}) {
   return {
     ...fixture,
     app,
-    store,
+    repository,
     options,
     cookie,
     tokenHash,
@@ -208,7 +208,7 @@ test('a session lookup failure is a sanitized server error rather than an expiry
 
 test('a session revoked between lookup and activity update is rejected', async () => {
   const h = await setup();
-  h.store.touchSession = async () => {
+  h.repository.touchSession = async () => {
     h.sessions.delete(h.tokenHash);
     return false;
   };
@@ -247,7 +247,7 @@ test('logout reports database failure without clearing a still-valid cookie', as
 test('background/stream validation does not renew idle time', async () => {
   const h = await setup();
   const app = new Hono<AuthEnv>();
-  app.get('/stream-check', requireSession(h.store, h.options, { recordActivity: false }), (c) =>
+  app.get('/stream-check', requireSession(h.repository, h.options, { recordActivity: false }), (c) =>
     c.text('ok'),
   );
   const before = h.sessions.get(h.tokenHash)!.lastSeenAt.getTime();
@@ -264,7 +264,7 @@ test('background/stream validation does not renew idle time', async () => {
 test('the trader guard allows traders and denies reviewers after authentication', async () => {
   const h = await setup();
   const app = new Hono<AuthEnv>();
-  app.post('/write-check', requireSession(h.store, h.options), requireTrader, (c) => c.text('ok'));
+  app.post('/write-check', requireSession(h.repository, h.options), requireTrader, (c) => c.text('ok'));
 
   assert.equal(
     (await app.request('/write-check', { method: 'POST', headers: { Cookie: h.cookie } })).status,

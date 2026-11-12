@@ -6,3 +6,5 @@ export function createDatabaseClient(connectionString: string) {
 }
 
 export type DatabaseClient = ReturnType<typeof createDatabaseClient>;
+
+export { Prisma } from '../generated/prisma/client.js';

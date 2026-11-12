@@ -15,7 +15,8 @@
     "db:migrate:dev": "pnpm --filter @trade-blotter/database migrate:dev",
     "db:studio": "pnpm --filter @trade-blotter/database studio",
     "db:seed": "pnpm --filter @trade-blotter/database seed",
-    "test": "pnpm --filter @trade-blotter/backend test"
+    "test": "pnpm --filter @trade-blotter/backend test",
+    "test:trades": "pnpm --filter @trade-blotter/backend test:trades"
   },
   "engines": {
     "node": ">=24.14.0 <25"

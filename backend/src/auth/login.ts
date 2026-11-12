@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { Hono } from 'hono';
 import { setCookie } from 'hono/cookie';
-import type { AuthStore } from './auth-store';
+import type { AuthRepository } from './auth-repository';
 import {
   type LoginEnv,
   requireTrustedOrigin,
@@ -20,7 +20,7 @@ import {
   sessionCookieOptions,
 } from './session';
 
-export function createLoginRoutes(store: AuthStore, options: AuthOptions) {
+export function createLoginRoutes(repository: AuthRepository, options: AuthOptions) {
   const routes = new Hono<LoginEnv>();
 
   routes.post(
@@ -32,7 +32,7 @@ export function createLoginRoutes(store: AuthStore, options: AuthOptions) {
     async (c) => {
       const { email, password } = c.get('credentials');
 
-      const user = await store.findUser(email);
+      const user = await repository.findUser(email);
 
       // Unknown accounts still perform scrypt to reduce email-enumeration timing differences.
       const valid = await verifyPassword(password, user?.passwordHash ?? dummyPasswordHash);
@@ -44,7 +44,7 @@ export function createLoginRoutes(store: AuthStore, options: AuthOptions) {
       const token = randomBytes(32).toString('base64url');
       const now = options.now?.() ?? new Date();
 
-      await store.createSession({
+      await repository.createSession({
         userId: user.id,
         tokenHash: hashSessionToken(token),
         lastSeenAt: now,
