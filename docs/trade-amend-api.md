@@ -1,8 +1,8 @@
 # Amendments
 
 `PATCH /api/trades/:id` is implemented for signed-in traders amending their own
-ACTIVE trades. Successful amendments are delivered through SSE; the frontend form
-remains pending.
+ACTIVE trades. Successful amendments are delivered through SSE. The frontend API
+client is implemented; the row action and inline form remain pending.
 
 ## Editable fields
 
@@ -50,6 +50,16 @@ curl -i -b .cookies -X PATCH 'http://localhost:3000/api/trades/<trade-id>' \
 
 Responses use `Cache-Control: no-store`. On conflict, retain the draft and review
 `currentTrade`; never silently substitute its version and retry the edit.
+
+## Browser client
+
+`tradeApi.amend(tradeId, input)` validates the ID and partial request, sends PATCH
+with the session cookie, and returns the validated trade. Decimal strings stay
+exact; the backend applies canonical fixed-scale formatting. It does not retry or
+replace the submitted version automatically.
+
+HTTP errors retain their JSON in `ApiError.responseBody` as `unknown`. Validate it
+with `amendTradeConflictSchema` before using a conflict's `currentTrade` for review.
 
 ## Instrument corrections
 

@@ -1,8 +1,32 @@
+import {
+  amendTradeIdSchema,
+  amendTradeRequestSchema,
+  amendTradeResponseSchema,
+  type AmendTradeRequest,
+} from './trade-amend-contract';
 import { createTradeRequestSchema, createTradeResponseSchema, type CreateTradeRequest } from './trade-create-contract';
 import { ApiError, apiRequest } from './api-client';
 import { defaultTradeListQuery, tradeListQuerySchema, tradeListResponseSchema, type TradeListQuery, type TradeListResponse } from './trade-contract';
 
 export const tradeApi = {
+  amend: async (tradeId: string, input: AmendTradeRequest) => {
+    const id = amendTradeIdSchema.parse(tradeId);
+    const request = amendTradeRequestSchema.parse(input);
+    const response = await apiRequest(`/trades/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(request),
+    });
+    const body: unknown = await response.json().catch(() => null);
+    const validation = amendTradeResponseSchema.safeParse(body);
+
+    if (!validation.success || validation.data.trade.id !== id) {
+      throw new ApiError(response.status, 'INVALID_RESPONSE', 'The server returned an unexpected amendment response.');
+    }
+
+    return validation.data.trade;
+  },
+
   create: async (input: CreateTradeRequest, idempotencyKey: string) => {
     const request = createTradeRequestSchema.parse(input);
     const response = await apiRequest('/trades', {
