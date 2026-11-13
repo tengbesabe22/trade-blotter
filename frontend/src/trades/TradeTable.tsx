@@ -1,7 +1,6 @@
 import { CellStyleModule, ClientSideRowModelModule, themeQuartz, type ColDef } from 'ag-grid-community';
 import { AgGridProvider, AgGridReact } from 'ag-grid-react';
 import type { Trade } from '../api/trade-contract';
-import { compareDecimalStrings } from './trade-sort';
 
 const modules = [ClientSideRowModelModule, CellStyleModule];
 const theme = themeQuartz.withParams({
@@ -18,10 +17,11 @@ const theme = themeQuartz.withParams({
 });
 
 const defaultColumn: ColDef<Trade> = {
-  sortable: true,
+  // Sorting is performed by the API across the full result set.
+  sortable: false,
   resizable: true,
   minWidth: 90,
-  // Keep decimal strings as strings; numeric sorting is explicit on those columns.
+  // Keep exact financial values as strings for display.
   cellDataType: false,
 };
 
@@ -40,7 +40,6 @@ const columns: ColDef<Trade>[] = [
     width: 155,
     type: 'rightAligned',
     cellClass: 'ag-right-aligned-cell tabular-nums',
-    comparator: compareDecimalStrings,
   },
   {
     field: 'price',
@@ -48,7 +47,6 @@ const columns: ColDef<Trade>[] = [
     width: 140,
     type: 'rightAligned',
     cellClass: 'ag-right-aligned-cell tabular-nums',
-    comparator: compareDecimalStrings,
   },
   { field: 'status', width: 140, cellClass: 'font-medium' },
   { field: 'trader', width: 120 },
@@ -56,7 +54,6 @@ const columns: ColDef<Trade>[] = [
     field: 'tradeDate',
     headerName: 'Execution time (UTC)',
     width: 235,
-    sort: 'desc',
     valueFormatter: ({ value }) => value ? value.replace('T', ' ').replace('Z', '') : '',
   },
   { field: 'book', width: 175, valueFormatter: ({ value }) => value ?? '—' },

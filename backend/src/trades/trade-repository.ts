@@ -6,6 +6,9 @@ import {
   type CreateTradeResult,
 } from './trade-create-contract';
 import { toTradeResponse } from './trade-mapper';
+import type { NormalizedTradeListQuery } from './trade-query-contract';
+import type { TradeCursorBoundary } from './trade-cursor';
+import { tradeBoundaryFilter, tradeListFilters, tradeListOrder } from './trade-list-query';
 
 // The mapper needs the symbol and display name, not complete account records.
 export type TradeRecord = Prisma.TradeGetPayload<{
@@ -15,8 +18,13 @@ export type TradeRecord = Prisma.TradeGetPayload<{
   };
 }>;
 
+export type TradePage = {
+  records: TradeRecord[];
+  hasNextPage: boolean;
+};
+
 export type TradeRepository = {
-  list: () => Promise<TradeRecord[]>;
+  list: (query: NormalizedTradeListQuery, boundary: TradeCursorBoundary | null) => Promise<TradePage>;
   create: (command: CreateTradeCommand) => Promise<CreateTradeResult>;
 };
 
@@ -134,13 +142,25 @@ export function createTradeRepository(database: TradeDatabase): TradeRepository 
       }
     },
 
-    list: async (): Promise<TradeRecord[]> => {
-      return await database.trade.findMany({
+    list: async (query, boundary): Promise<TradePage> => {
+      const filters = tradeListFilters(query);
+      const comparison = query.sortDirection === 'asc' ? 'gt' : 'lt';
+
+      const rows = await database.trade.findMany({
+        where: boundary ? { AND: [filters, tradeBoundaryFilter(boundary, comparison)] } : filters,
+        orderBy: tradeListOrder(query.sortBy, query.sortDirection),
+        // One extra row tells us whether to issue a next cursor, without counting all matches.
+        take: query.limit + 1,
         include: {
           instrument: { select: { symbol: true } },
           user: { select: { displayName: true } },
         },
       });
+
+      return {
+        records: rows.slice(0, query.limit),
+        hasNextPage: rows.length > query.limit,
+      };
     },
   };
 }

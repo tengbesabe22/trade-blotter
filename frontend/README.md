@@ -2,7 +2,7 @@
 
 React + TypeScript + Vite, with Tailwind CSS and Oxlint.
 Login, logout, session restoration, and a read-only trade grid are implemented.
-AG Grid Community displays rows; TanStack Query manages the loaded snapshot.
+AG Grid Community displays one bounded page; TanStack Query manages the current request/cache.
 Filtering, trade forms, and live updates are next.
 
 ## Commands
@@ -35,9 +35,11 @@ the origin aligned with the backend's local `APP_ORIGIN`. Build output is in
 | `src/auth/LoginForm.tsx` | Controlled email/password inputs, submission, pending state, and errors |
 | `src/auth/AccountPanel.tsx` | Compact account header and confirmed logout |
 | `src/trades/TradeWorkspace.tsx` | Owns a query cache for one signed-in workspace |
-| `src/trades/TradesPage.tsx` | Loads trades; handles refresh, loading, empty, and error states |
+| `src/trades/TradesPage.tsx` | Owns page inputs, cursor history/query key, refresh and error states |
+| `src/trades/TradeListControls.tsx` | Server sort and page-size controls; changing either resets pagination |
+| `src/trades/TradePagination.tsx` | Previous from local history, Next from the response, and First page controls |
 | `src/trades/TradeTable.tsx` | Grid columns, stable row IDs, and display settings |
-| `src/trades/trade-sort.ts` | Compares fixed-scale decimal strings without rounding |
+| `src/trades/trade-sort.ts` | Decimal comparison utility; active page sorting now happens on the server |
 | `src/index.css` | Global styles and Tailwind entry |
 | `src/assets/` | Imported images and SVGs |
 | `public/` | Static files copied to the build |
@@ -89,25 +91,33 @@ For backend setup, see the [project README](../README.md).
 
 1. After login or session restoration, `TradeWorkspace` creates a TanStack Query
    client. A new login receives a new workspace/cache.
-2. `TradesPage` loads the snapshot through `tradeApi.list()`. Zod rejects malformed
+2. `TradesPage` loads a page through `tradeApi.list(query, signal)`. Its query key
+   includes limit, ordering and cursor; inactive pages are released. Zod rejects malformed
    responses before they enter the cache; no database/backend modules enter the browser.
 3. `TradeTable` reads that snapshot. It is loaded separately so the grid code does
    not delay the login screen. Stable trade IDs preserve row identity on refresh.
 
-Both account roles see all trades. The grid starts with newest execution times
-first. Headers sort, columns resize, and the ticker stays pinned while other
-columns scroll horizontally. The grid has a bounded height and virtualises rows;
-the page and account/refresh controls adapt to narrow screens.
+Both account roles can browse all trades. The first request loads 100 rows, newest
+execution time first. Sort controls order the full result set on the API; grid
+headers do not reorder only the loaded page. Page-size options are 25/50/100/200.
+Next appends the returned cursor to a small request history. Previous removes the
+latest history entry and repeats the earlier forward request. First page clears
+history; changing sorting or page size also resets it. Refresh preserves history. No total count or numbered-page jump is shown.
+Columns resize and the ticker stays pinned while other columns scroll horizontally.
+The grid has a bounded height and virtualises rows; controls wrap on narrow screens.
 
 Quantity and price remain decimal strings at six and four fractional places.
-Sorting compares scaled integers with BigInt, using the fixed scale of each
-column. Prices are labelled USD; execution timestamps are displayed in UTC.
+Sorting uses PostgreSQL decimal columns. Prices are labelled USD; execution
+timestamps are displayed in UTC.
 Missing book/counterparty values display an em dash.
 
 | Situation | Behavior |
 | --- | --- |
 | First load | Loading message and disabled refresh |
-| Empty snapshot | Explicit empty state |
+| Empty first page | Explicit empty state |
+| Empty older page | Page-specific message and First page recovery |
+| Page navigation | Bounded fetch; no previous-page rows shown under the new query |
+| Changed sort/page size | Reset to first page; abort obsolete requests |
 | Refresh pending | Keep rows visible; disable duplicate refresh |
 | Load failure | Error with Refresh trades available to retry |
 | Refresh failure | Keep the last snapshot and warn it could not be refreshed |
@@ -117,11 +127,12 @@ Missing book/counterparty values display an em dash.
 There is no polling, automatic error retry, or focus/reconnect refetch in this
 slice. Use manual refresh to see changes made elsewhere. SSE will be a later slice.
 
-Tests cover API validation, exact decimal sorting, loading/empty/error/retry flows,
-refresh behavior, expiry, and cancellation. Component tests mock fetch and use the
-real grid where jsdom supports it. CSS layout, horizontal navigation, and sorting
-were also checked in a real browser with the local seeded API; this is a smoke
-check, not an automated end-to-end or load test.
+Tests cover response/query validation, cursor navigation, server sort/page-size
+changes, loading/empty/error/retry flows, refresh, expiry, and cancellation. Component tests mock fetch and use the
+real grid where jsdom supports it. The pagination controls were also checked in a real browser against the local
+seeded API; this is a smoke check, not an automated end-to-end or load test.
+See the [trade-list API guide](../docs/trade-list-api.md) for available filters,
+response metadata and cursor behavior. Filter form controls remain pending.
 
 The grid remains the largest production chunk. It is loaded on demand; further
 bundle optimisation and larger-dataset measurements remain future work.

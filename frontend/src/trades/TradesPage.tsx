@@ -1,7 +1,10 @@
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ApiError } from '../api/api-client';
 import { tradeApi } from '../api/trade-api';
+import { defaultTradeListQuery, type TradeListQuery } from '../api/trade-contract';
+import { TradeListControls } from './TradeListControls';
+import { TradePagination } from './TradePagination';
 
 // Load the grid only when there are rows to display, keeping login lightweight.
 const TradeTable = lazy(async () => {
@@ -14,9 +17,16 @@ type TradesPageProps = {
 };
 
 export function TradesPage({ onSessionExpired }: TradesPageProps) {
+  const [queryOptions, setQueryOptions] = useState(defaultTradeListQuery);
+  // Each entry is the cursor used to request a visited page; null represents page one.
+  const [cursorHistory, setCursorHistory] = useState<(string | null)[]>([null]);
+  const request = { ...queryOptions, after: cursorHistory.at(-1) ?? undefined };
+  const isFirstPage = cursorHistory.length === 1;
   const query = useQuery({
-    queryKey: ['trades'],
-    queryFn: ({ signal }) => tradeApi.list(signal),
+    queryKey: ['trades', request],
+    queryFn: ({ signal }) => tradeApi.list(request, signal),
+    // Release inactive pages instead of accumulating the full trading history.
+    gcTime: 0,
     // Start with explicit refresh/retry; no polling or hidden retries.
     retry: false,
     refetchOnWindowFocus: false,
@@ -25,6 +35,23 @@ export function TradesPage({ onSessionExpired }: TradesPageProps) {
 
   const trades = query.data?.trades;
   const sessionExpired = query.error instanceof ApiError && query.error.status === 401;
+
+  function changeQuery(nextQuery: TradeListQuery) {
+    setQueryOptions(nextQuery);
+    // reset to the first page when changing filters or sort order
+    setCursorHistory([null]);
+  }
+
+  function nextPage() {
+    const nextCursor = query.data?.pageInfo.nextCursor;
+    if (nextCursor && !query.isFetching) {
+      setCursorHistory((history) => [...history, nextCursor]);
+    }
+  }
+
+  function previousPage() {
+    setCursorHistory((history) => history.length > 1 ? history.slice(0, -1) : history);
+  }
 
   function refreshTrades() {
     if (!query.isFetching) void query.refetch();
@@ -38,7 +65,7 @@ export function TradesPage({ onSessionExpired }: TradesPageProps) {
             Trades
           </h1>
           <p aria-live="polite" className="mt-1 text-sm text-slate-600">
-            {sessionExpired || !trades ? 'USD equities · All traders' : `${trades.length} ${trades.length === 1 ? 'trade' : 'trades'}`}
+            {sessionExpired || !trades ? 'USD equities · All traders' : `${trades.length} ${trades.length === 1 ? 'trade' : 'trades'} shown`}
           </p>
         </div>
         {!sessionExpired && (
@@ -68,6 +95,7 @@ export function TradesPage({ onSessionExpired }: TradesPageProps) {
         </div>
       ) : (
         <>
+          <TradeListControls query={queryOptions} onChange={changeQuery} />
           {query.isError && (
             <p role="alert" className="m-4 rounded-lg bg-red-50 p-4 text-sm text-red-800">
               {trades
@@ -82,9 +110,11 @@ export function TradesPage({ onSessionExpired }: TradesPageProps) {
 
           {trades && trades.length === 0 && (
             <div className="px-6 py-12 text-center">
-              <h2 className="font-semibold text-slate-900">No trades yet</h2>
+              <h2 className="font-semibold text-slate-900">{isFirstPage ? 'No trades yet' : 'No trades on this page'}</h2>
               <p className="mt-2 text-sm text-slate-600">
-                Trades will appear here after they are recorded. Use Refresh trades to check again.
+                {isFirstPage
+                  ? 'Trades will appear here after they are recorded. Use Refresh trades to check again.'
+                  : 'Trades may have moved since this page was loaded. Return to the first page to continue.'}
               </p>
             </div>
           )}
@@ -93,13 +123,21 @@ export function TradesPage({ onSessionExpired }: TradesPageProps) {
             <>
               <p className="px-4 py-3 text-xs leading-5 text-slate-600 sm:px-6">
                 Prices in USD · Execution times in UTC. Scroll horizontally to see all columns.
-                Select a column header to sort.
+                Use the sort controls to order all trades.
               </p>
               <Suspense fallback={<p role="status" className="p-10 text-center text-sm text-slate-600">Preparing trade table…</p>}>
                 <TradeTable trades={trades} />
               </Suspense>
             </>
           )}
+          <TradePagination
+            pageInfo={query.data?.pageInfo}
+            isFetching={query.isFetching}
+            isFirstPage={isFirstPage}
+            onFirstPage={() => setCursorHistory([null])}
+            onPrevious={previousPage}
+            onNext={nextPage}
+          />
         </>
       )}
     </section>

@@ -51,5 +51,13 @@ export const tradeResponseSchema = z.strictObject({
 
 export type TradeResponse = z.infer<typeof tradeResponseSchema>;
 
-export const tradeListResponseSchema = z.strictObject({ trades: z.array(tradeResponseSchema) });
+export const tradeListResponseSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  generatedAt: z.iso.datetime({ precision: 3 }),
+  trades: z.array(tradeResponseSchema).max(200),
+  pageInfo: z.strictObject({
+    limit: z.number().int().min(1).max(200),
+    nextCursor: z.string().min(1).max(2048).nullable(),
+  }),
+});
 export type TradeListResponse = z.infer<typeof tradeListResponseSchema>;

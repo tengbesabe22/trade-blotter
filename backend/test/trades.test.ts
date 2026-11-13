@@ -5,6 +5,8 @@ import { Prisma } from '@trade-blotter/database';
 import { createApp } from '../src/app';
 import type { CurrentUser } from '../src/auth/auth-contract';
 import type { TradeResponse } from '../src/trades/trade-contract';
+import { tradeListQuerySchema } from '../src/trades/trade-query-contract';
+import { decodeTradeCursor } from '../src/trades/trade-cursor';
 import { toTradeResponse } from '../src/trades/trade-mapper';
 import type { TradeRecord, TradeRepository } from '../src/trades/trade-repository';
 import { createAuthFixture, origin, user } from './auth-fixtures';
@@ -75,6 +77,7 @@ type SetupOptions = {
   role?: CurrentUser['role'];
   records?: TradeRecord[];
   failListing?: boolean;
+  hasNextPage?: boolean;
 };
 
 async function setup(options: SetupOptions = {}) {
@@ -82,7 +85,7 @@ async function setup(options: SetupOptions = {}) {
   auth.users.get('jsmith@example.com')!.role = options.role ?? 'TRADER';
   const now = new Date('2026-11-11T09:00:00Z');
   const token = 'a'.repeat(43);
-  const calls = { list: 0 };
+  const calls = { list: 0, args: [] as unknown[] };
 
   await auth.repository.createSession({
     userId: user.id,
@@ -97,14 +100,18 @@ async function setup(options: SetupOptions = {}) {
       throw new Error('Unexpected trade creation in list test.');
     },
 
-    list: async () => {
+    list: async (...args) => {
       calls.list += 1;
+      calls.args = args;
 
       if (options.failListing) {
         throw new Error('Private database connection details');
       }
 
-      return options.records ?? [tradeRecord(), cancelledTrade()];
+      return {
+        records: options.records ?? [tradeRecord(), cancelledTrade()],
+        hasNextPage: options.hasNextPage ?? false,
+      };
     },
   };
 
@@ -113,8 +120,8 @@ async function setup(options: SetupOptions = {}) {
     { origin, secureCookies: false, now: () => now },
   );
 
-  function request(authenticated = true) {
-    return app.request('/api/trades', {
+  function request(authenticated = true, search = '') {
+    return app.request('/api/trades' + search, {
       headers: authenticated ? { Cookie: `blotter_session=${token}` } : {},
     });
   }
@@ -140,6 +147,8 @@ for (const role of ['TRADER', 'READ_ONLY'] as const) {
     assert.equal(response.status, 200);
     assert.equal(response.headers.get('Cache-Control'), 'no-store');
     assert.deepEqual(await response.json(), {
+      schemaVersion: 1, generatedAt: '2026-11-11T09:00:00.000Z',
+      pageInfo: { limit: 100, nextCursor: null },
       trades: [
         expectedTrade,
         {
@@ -165,7 +174,10 @@ test('GET /api/trades returns an empty trades array when there are no records', 
   const response = await h.request();
 
   assert.equal(response.status, 200);
-  assert.deepEqual(await response.json(), { trades: [] });
+  assert.deepEqual(await response.json(), {
+    schemaVersion: 1, generatedAt: '2026-11-11T09:00:00.000Z', trades: [],
+    pageInfo: { limit: 100, nextCursor: null },
+  });
 });
 
 test('GET /api/trades returns a sanitized server error if listing fails', async () => {
@@ -200,4 +212,44 @@ test('trade mapping preserves fractional precision and nullable metadata', () =>
   assert.equal(response.price, '999999.9999');
   assert.equal(response.book, null);
   assert.equal(response.counterparty, null);
+});
+
+test('GET validates and normalises query inputs before repository access', async () => {
+  const h = await setup();
+  const response = await h.request(true, '?limit=25&symbol=aapl&side=BUY');
+  assert.equal(response.status, 200);
+  assert.deepEqual(h.calls.args, [tradeListQuerySchema.parse({ limit: ['25'], symbol: ['aapl'], side: ['BUY'] }), null]);
+});
+
+for (const search of ['?limit=201', '?limit=1&limit=2', '?unknown=x', '?before=opaque-cursor', '?after=a&before=b']) {
+  test(`GET rejects invalid query ${search} before repository access`, async () => {
+    const h = await setup();
+    const response = await h.request(true, search);
+    assert.equal(response.status, 400);
+    assert.equal((await response.json() as { code: string }).code, 'INVALID_INPUT');
+    assert.equal(h.calls.list, 0);
+  });
+}
+
+test('GET rejects malformed cursors before repository access', async () => {
+  const h = await setup();
+  const response = await h.request(true, '?after=not-a-cursor');
+  assert.equal(response.status, 400);
+  assert.equal((await response.json() as { code: string }).code, 'INVALID_CURSOR');
+  assert.equal(h.calls.list, 0);
+});
+
+test('GET returns only a forward cursor from the last returned record', async () => {
+  const h = await setup({ hasNextPage: true });
+  const response = await h.request(true, '?limit=2');
+  assert.equal(response.status, 200);
+  const body = await response.json() as { pageInfo: { nextCursor: string; limit: number } };
+  assert.deepEqual(Object.keys(body.pageInfo).sort(), ['limit', 'nextCursor']);
+  assert.equal(body.pageInfo.limit, 2);
+  const next = tradeListQuerySchema.parse({ limit: ['2'], after: [body.pageInfo.nextCursor] });
+  assert.equal(decodeTradeCursor(next)?.id, cancelledId);
+
+  const continuation = await h.request(true, '?limit=2&after=' + body.pageInfo.nextCursor);
+  assert.equal(continuation.status, 200);
+  assert.deepEqual(h.calls.args, [next, decodeTradeCursor(next)]);
 });

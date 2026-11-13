@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test, { after, afterEach, type TestContext } from 'node:test';
 import { JSDOM } from 'jsdom';
 import App from '../src/App';
-import { signedInTrader, sampleTrade, cancelledTrade } from './trade-fixtures';
+import { signedInTrader, sampleTrade, cancelledTrade, tradePage } from './trade-fixtures';
 
 const dom = new JSDOM('<!doctype html><html><body></body></html>', {
   url: 'http://localhost:5173',
@@ -33,7 +33,7 @@ function showTrades(t: TestContext, tradeTransport: typeof fetch, role = 'TRADER
     }
 
     if (url === '/api/auth/logout') return new Response(null, { status: 204 });
-    assert.equal(url, '/api/trades');
+    assert.ok(String(url).startsWith('/api/trades'));
     return tradeTransport(url, options);
   };
 
@@ -51,14 +51,14 @@ test('trades show a loading state without an empty-state flash', async (t) => {
   assert.equal(screen.queryByText('No trades yet'), null);
   assert.equal(screen.getByRole('button', { name: 'Refresh trades' }).hasAttribute('disabled'), true);
 
-  await act(async () => { resolveTrades(Response.json({ trades: [] })); });
+  await act(async () => { resolveTrades(Response.json(tradePage())); });
   await screen.findByText('No trades yet');
 });
 
 test('a reviewer can view populated trade rows with exact quantities and clear display guidance', async (t) => {
-  showTrades(t, async () => Response.json({ trades: [sampleTrade, cancelledTrade] }), 'READ_ONLY');
+  showTrades(t, async () => Response.json(tradePage([sampleTrade, cancelledTrade])), 'READ_ONLY');
 
-  await screen.findByText('2 trades');
+  await screen.findByText('2 trades shown');
   assert.ok(await screen.findByText('AAPL'));
   assert.ok(screen.getByText('MSFT'));
   assert.ok(screen.getByText('5000.000001'));
@@ -70,10 +70,10 @@ test('a reviewer can view populated trade rows with exact quantities and clear d
 });
 
 test('an empty successful response shows a useful empty state', async (t) => {
-  showTrades(t, async () => Response.json({ trades: [] }));
+  showTrades(t, async () => Response.json(tradePage()));
 
   await screen.findByText('No trades yet');
-  assert.ok(screen.getByText('0 trades'));
+  assert.ok(screen.getByText('0 trades shown'));
   assert.equal(screen.queryByRole('alert'), null);
 });
 
@@ -82,7 +82,7 @@ for (const failure of ['network', 'server', 'invalid response']) {
     let attempts = 0;
     showTrades(t, async () => {
       attempts += 1;
-      if (attempts > 1) return Response.json({ trades: [] });
+      if (attempts > 1) return Response.json(tradePage());
       if (failure === 'network') throw new TypeError('Failed to fetch');
       if (failure === 'invalid response') return Response.json({ trades: [null] });
       return Response.json({ code: 'INTERNAL_ERROR', message: 'Failed.' }, { status: 500 });
@@ -103,9 +103,9 @@ test('refresh keeps existing rows, prevents duplicate requests, and warns if it 
   const pending = new Promise<Response>((resolve) => { resolveRefresh = resolve; });
   showTrades(t, async () => {
     attempts += 1;
-    if (attempts === 1) return Response.json({ trades: [sampleTrade] });
+    if (attempts === 1) return Response.json(tradePage([sampleTrade]));
     if (attempts === 2) return pending;
-    return Response.json({ trades: [cancelledTrade] });
+    return Response.json(tradePage([cancelledTrade]));
   });
   await screen.findByText('AAPL');
 
@@ -135,7 +135,7 @@ test('an expired session hides cached trades and offers sign-in instead of a gen
   showTrades(t, async () => {
     attempts += 1;
     return attempts === 1
-      ? Response.json({ trades: [sampleTrade] })
+      ? Response.json(tradePage([sampleTrade]))
       : Response.json({ code: 'UNAUTHENTICATED', message: 'Please log in again.' }, { status: 401 });
   });
   await screen.findByText('AAPL');
@@ -159,18 +159,133 @@ test('signing out cancels a pending trade request and a new login starts with an
       return pending;
     }
 
-    return Response.json({ trades: [] });
+    return Response.json(tradePage());
   });
   await screen.findByText('Loading trades…');
   fireEvent.click(screen.getByRole('button', { name: 'Sign out' }));
   await screen.findByLabelText('Email');
   assert.equal(pendingSignal?.aborted, true);
 
-  await act(async () => { resolveOldTrades(Response.json({ trades: [sampleTrade] })); });
+  await act(async () => { resolveOldTrades(Response.json(tradePage([sampleTrade]))); });
   fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'jsmith@example.com' } });
   fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'password' } });
   fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
   await screen.findByText('No trades yet');
   assert.equal(screen.queryByText('AAPL'), null);
   await waitFor(() => assert.equal(attempts, 2));
+});
+
+test('Previous reuses earlier forward requests across three visited pages', async (t) => {
+  const urls: URL[] = [];
+  const thirdTrade = { ...sampleTrade, id: 'f1550000-0000-4000-8000-000000100003', symbol: 'TSLA' };
+  showTrades(t, async (input) => {
+    const url = new URL(String(input), 'http://localhost');
+    urls.push(url);
+    const after = url.searchParams.get('after');
+    if (after === 'cursor-B') return Response.json(tradePage([thirdTrade]));
+    if (after === 'cursor-A') return Response.json(tradePage([cancelledTrade], { nextCursor: 'cursor-B' }));
+    return Response.json(tradePage([sampleTrade], { nextCursor: 'cursor-A' }));
+  });
+  await screen.findByText('AAPL');
+  assert.equal(screen.getByRole('button', { name: 'Previous' }).hasAttribute('disabled'), true);
+  fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+  await screen.findByText('MSFT');
+  fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+  await screen.findByText('TSLA');
+  assert.equal(screen.getByRole('button', { name: 'Next' }).hasAttribute('disabled'), true);
+  fireEvent.click(screen.getByRole('button', { name: 'Previous' }));
+  await screen.findByText('MSFT');
+  fireEvent.click(screen.getByRole('button', { name: 'Previous' }));
+  await screen.findByText('AAPL');
+  assert.equal(screen.getByRole('button', { name: 'Previous' }).hasAttribute('disabled'), true);
+  assert.deepEqual(urls.map((url) => url.searchParams.get('after')), [null, 'cursor-A', 'cursor-B', 'cursor-A', null]);
+  assert.ok(urls.every((url) => !url.searchParams.has('before')));
+});
+
+test('changing sorting or page size starts a new server-side traversal', async (t) => {
+  const urls: URL[] = [];
+  showTrades(t, async (input) => {
+    urls.push(new URL(String(input), 'http://localhost'));
+    return Response.json(tradePage([sampleTrade], { nextCursor: 'next-token' }));
+  });
+  await screen.findByText('AAPL');
+  fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+  await waitFor(() => assert.equal(urls.at(-1)?.searchParams.get('after'), 'next-token'));
+  fireEvent.change(screen.getByLabelText('Sort by'), { target: { value: 'price' } });
+  await waitFor(() => assert.equal(urls.at(-1)?.searchParams.get('sortBy'), 'price'));
+  assert.equal(urls.at(-1)?.searchParams.has('after'), false);
+  fireEvent.change(screen.getByLabelText('Sort direction'), { target: { value: 'asc' } });
+  await waitFor(() => assert.equal(urls.at(-1)?.searchParams.get('sortDirection'), 'asc'));
+  fireEvent.change(screen.getByLabelText('Rows per page'), { target: { value: '25' } });
+  await waitFor(() => assert.equal(urls.at(-1)?.searchParams.get('limit'), '25'));
+  assert.equal(urls.at(-1)?.searchParams.has('before'), false);
+  assert.equal(urls.at(-1)?.searchParams.has('after'), false);
+  assert.equal(screen.getByRole('button', { name: 'Previous' }).hasAttribute('disabled'), true);
+});
+
+test('a failed historical page keeps Previous and First page recovery available', async (t) => {
+  showTrades(t, async (input) => new URL(String(input), 'http://localhost').searchParams.has('after')
+    ? Response.json({ code: 'INVALID_CURSOR', message: 'Return to the first page.' }, { status: 400 })
+    : Response.json(tradePage([sampleTrade], { nextCursor: 'next-token' })));
+  await screen.findByText('AAPL');
+  fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+  await screen.findByRole('alert');
+  fireEvent.click(screen.getByRole('button', { name: 'Previous' }));
+  await screen.findByText('AAPL');
+  fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+  await screen.findByRole('alert');
+  fireEvent.click(screen.getByRole('button', { name: 'First page' }));
+  await screen.findByText('AAPL');
+});
+
+test('an empty historical page is distinguished from an empty blotter', async (t) => {
+  showTrades(t, async (input) => new URL(String(input), 'http://localhost').searchParams.has('after')
+    ? Response.json(tradePage())
+    : Response.json(tradePage([sampleTrade], { nextCursor: 'next-token' })));
+  await screen.findByText('AAPL');
+  fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+  await screen.findByText('No trades on this page');
+  assert.equal(screen.queryByText('No trades yet'), null);
+  fireEvent.click(screen.getByRole('button', { name: 'First page' }));
+  await screen.findByText('AAPL');
+});
+
+test('a sort change aborts the old request and ignores its late result', async (t) => {
+  let resolveOld!: (response: Response) => void;
+  let oldSignal: AbortSignal | null | undefined;
+  const pending = new Promise<Response>((resolve) => { resolveOld = resolve; });
+  showTrades(t, async (input, options) => {
+    if (new URL(String(input), 'http://localhost').searchParams.get('sortBy') === 'tradeDate') {
+      oldSignal = options?.signal;
+      return pending;
+    }
+    return Response.json(tradePage([cancelledTrade]));
+  });
+  await screen.findByText('Loading trades…');
+  fireEvent.change(screen.getByLabelText('Sort by'), { target: { value: 'price' } });
+  await screen.findByText('MSFT');
+  assert.equal(oldSignal?.aborted, true);
+  await act(async () => { resolveOld(Response.json(tradePage([sampleTrade]))); });
+  assert.equal(screen.queryByText('AAPL'), null);
+});
+
+
+test('refresh does not add a cursor-history entry', async (t) => {
+  const cursors: (string | null)[] = [];
+  showTrades(t, async (input) => {
+    const after = new URL(String(input), 'http://localhost').searchParams.get('after');
+    cursors.push(after);
+    return after
+      ? Response.json(tradePage([cancelledTrade]))
+      : Response.json(tradePage([sampleTrade], { nextCursor: 'cursor-A' }));
+  });
+  await screen.findByText('AAPL');
+  fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+  await screen.findByText('MSFT');
+  fireEvent.click(screen.getByRole('button', { name: 'Refresh trades' }));
+  await waitFor(() => assert.equal(cursors.length, 3));
+  await waitFor(() => assert.equal(screen.getByRole('button', { name: 'Refresh trades' }).hasAttribute('disabled'), false));
+  fireEvent.click(screen.getByRole('button', { name: 'Previous' }));
+  await screen.findByText('AAPL');
+  assert.deepEqual(cursors, [null, 'cursor-A', 'cursor-A', null]);
 });

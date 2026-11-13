@@ -1,4 +1,6 @@
 import type { TradeRecord } from './trade-repository';
+import type { TradeCursorBoundary } from './trade-cursor';
+import type { NormalizedTradeListQuery } from './trade-query-contract';
 import type { TradeResponse } from './trade-contract';
 
 export function toTradeResponse(trade: TradeRecord): TradeResponse {
@@ -18,4 +20,22 @@ export function toTradeResponse(trade: TradeRecord): TradeResponse {
     createdAt: trade.createdAt.toISOString(),
     updatedAt: trade.updatedAt.toISOString(),
   };
+}
+
+/** Extracts the selected sort value and ID from a returned database record.
+ * Example: price sorting produces { sortBy: 'price', value: '227.4500', id }.
+ */
+export function toTradeCursorBoundary(
+  trade: TradeRecord,
+  sortBy: NormalizedTradeListQuery['sortBy'],
+): TradeCursorBoundary {
+  const id = trade.id;
+  switch (sortBy) {
+    case 'tradeDate': return { sortBy, value: trade.tradeDate.toISOString(), id };
+    case 'symbol': return { sortBy, value: trade.instrument.symbol, id };
+    case 'trader': return { sortBy, value: trade.user.displayName, id };
+    case 'quantity': return { sortBy, value: trade.quantity.toFixed(6), id };
+    case 'price': return { sortBy, value: trade.price.toFixed(4), id };
+    case 'status': return { sortBy, value: trade.status, id };
+  }
 }

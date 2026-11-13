@@ -4,10 +4,11 @@ A TypeScript application for viewing and recording USD equity trades.
 
 **Working:** individual login/logout, database sessions, trade listing, and trade
 creation with validation, idempotent retries, and transactional outbox storage.
+Trade reads support bounded cursor pages, server sorting, and filtering.
 
-**Next:** filtering, trade forms, amendment/cancellation, SSE delivery, and deployment.
+**Next:** filter controls, trade forms, amendment/cancellation, SSE delivery, and deployment.
 The frontend supports login, session restoration, logout, and a read-only trade
-grid with sorting, manual refresh, and loading/empty/error states.
+grid with server sorting, Previous/Next pagination, manual refresh, and loading/empty/error states.
 
 ## Run locally
 
@@ -79,11 +80,11 @@ All seeded trades and prices are fictional.
 | POST | `/api/auth/login` | Sign in with email/password |
 | GET | `/api/auth/me` | Read the current account and role |
 | POST | `/api/auth/logout` | Revoke the current session |
-| GET | `/api/trades` | List trades as `{ "trades": [...] }` |
+| GET | `/api/trades` | Read a bounded, sortable/filterable cursor page |
 | POST | `/api/trades` | Create a trade or replay its saved response |
 
 Start with [authentication and curl examples](docs/authentication.md), then
-[creating a trade](docs/trade-create-api.md).
+[listing trades](docs/trade-list-api.md) and [creating a trade](docs/trade-create-api.md).
 
 ## Checks and build
 

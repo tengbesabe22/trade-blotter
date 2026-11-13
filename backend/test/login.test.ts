@@ -14,7 +14,7 @@ function setup(overrides: Partial<AuthRepository> = {}, secureCookies = false) {
     {
       auth: { ...fixture.repository, ...overrides },
       trades: {
-        list: async () => [],
+        list: async () => ({ records: [], hasNextPage: false }),
         create: async () => {
           throw new Error('Unexpected trade creation in auth test.');
         },
