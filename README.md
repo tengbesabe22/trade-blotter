@@ -91,6 +91,7 @@ All seeded trades and prices are fictional.
 
 Start with [authentication and curl examples](docs/authentication.md), then
 [listing trades](docs/trade-list-api.md), [creating a trade](docs/trade-create-api.md),
+[amendment rules and implementation status](docs/trade-amend-api.md),
 and the [SSE connection](docs/trade-stream-api.md).
 
 ## Checks and build

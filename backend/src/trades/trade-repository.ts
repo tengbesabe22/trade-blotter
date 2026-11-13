@@ -6,6 +6,12 @@ import {
   type CreateTradeResult,
 } from './creation/trade-create-contract';
 import { toTradeResponse } from './trade-mapper';
+import type { TradeResponse } from './trade-contract';
+import type {
+  AmendTradeCommand,
+  AmendTradeResult,
+  NormalizedAmendTradeRequest,
+} from './amendments/trade-amend-contract';
 import type { NormalizedTradeListQuery } from './listing/trade-query-contract';
 import type { TradeCursorBoundary } from './listing/trade-cursor';
 import { tradeBoundaryFilter, tradeListFilters, tradeListOrder } from './listing/trade-list-query';
@@ -26,6 +32,7 @@ export type TradePage = {
 export type TradeRepository = {
   list: (query: NormalizedTradeListQuery, boundary: TradeCursorBoundary | null) => Promise<TradePage>;
   create: (command: CreateTradeCommand) => Promise<CreateTradeResult>;
+  amend: (command: AmendTradeCommand) => Promise<AmendTradeResult>;
 };
 
 type TradeDatabase = Pick<DatabaseClient, 'trade' | '$transaction' | 'idempotencyRequest'>;
@@ -54,6 +61,15 @@ function isIdempotencyKeyConflict(error: unknown): boolean {
   const constraint = isRecord(cause) ? cause.constraint : undefined;
 
   return isRecord(constraint) && constraint.index === 'IdempotencyRequest_userId_key_key';
+}
+
+function hasTradeChanges(
+  changes: NormalizedAmendTradeRequest['changes'],
+  current: TradeResponse,
+): boolean {
+  // Both sides have fixed-scale decimals and UTC dates, so equality is meaningful.
+  return Object.entries(changes).some(([field, value]) =>
+    value !== undefined && value !== current[field as keyof typeof changes]);
 }
 
 export function createTradeRepository(database: TradeDatabase): TradeRepository {
@@ -141,6 +157,63 @@ export function createTradeRepository(database: TradeDatabase): TradeRepository 
         return replayCreateRequest(winner, command.requestFingerprint);
       }
     },
+
+    amend: ({ userId, tradeId, input }) => database.$transaction(async (tx): Promise<AmendTradeResult> => {
+      const tradeQuery = {
+        where: { id: tradeId },
+        include: {
+          instrument: { select: { symbol: true } },
+          user: { select: { displayName: true } },
+        },
+      } as const;
+      const current = await tx.trade.findUnique(tradeQuery);
+
+      if (!current) return { kind: 'not-found' };
+      if (current.userId !== userId) return { kind: 'forbidden' };
+
+      const currentTrade = toTradeResponse(current);
+      if (current.status !== 'ACTIVE' || current.version !== input.expectedVersion) {
+        return { kind: 'conflict', currentTrade };
+      }
+      if (!hasTradeChanges(input.changes, currentTrade)) return { kind: 'no-changes' };
+
+      const { tradeDate, ...fields } = input.changes;
+      const data: Prisma.TradeUncheckedUpdateManyInput = {
+        ...fields,
+        version: { increment: 1 },
+      };
+      if (tradeDate !== undefined) data.tradeDate = new Date(tradeDate);
+
+      // The earlier read helps explain errors. This condition prevents lost updates.
+      // handles an expected concurrency conflict without throwing a database exception.
+      const { count } = await tx.trade.updateMany({
+        where: { id: tradeId, userId, status: 'ACTIVE', version: input.expectedVersion },
+        data,
+      });
+      const latest = await tx.trade.findUnique(tradeQuery);
+
+      if (count === 0) {
+        // Another writer won; return its state without retrying the user's edit.
+        return latest
+          ? { kind: 'conflict', currentTrade: toTradeResponse(latest) }
+          : { kind: 'not-found' };
+      }
+      if (!latest) throw new Error('Updated trade could not be loaded.');
+
+      const amendedTrade = toTradeResponse(latest);
+      await tx.outboxEvent.create({
+        data: {
+          type: 'TRADE_AMENDED',
+          actorId: userId,
+          tradeId,
+          tradeVersion: latest.version,
+          // Retain the reason until permanent audit storage is added separately.
+          payload: { trade: amendedTrade, reason: input.reason },
+        },
+      });
+
+      return { kind: 'amended', body: { trade: amendedTrade } };
+    }),
 
     list: async (query, boundary): Promise<TradePage> => {
       const filters = tradeListFilters(query);

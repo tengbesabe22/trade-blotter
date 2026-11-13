@@ -1,10 +1,11 @@
 import { z } from 'zod';
+import type { TradeResponse } from '../trade-contract';
 import { createTradeRequestSchema } from '../creation/trade-create-contract';
 
 const createFields = createTradeRequestSchema.shape;
 
+// Instrument identity is fixed at creation; symbol is not amendable.
 const tradeChangesSchema = z.strictObject({
-  symbol: createFields.symbol.optional(),
   side: createFields.side.optional(),
   quantity: createFields.quantity.optional(),
   price: createFields.price.optional(),
@@ -42,3 +43,15 @@ export type AmendTradeRequest = z.input<typeof amendTradeRequestSchema>;
 
 // Supplied fields are normalized; omitted trade fields remain unchanged.
 export type NormalizedAmendTradeRequest = z.output<typeof amendTradeRequestSchema>;
+
+// The authenticated actor and path ID come from the route, never the request body.
+export type AmendTradeCommand = {
+  userId: string;
+  tradeId: string;
+  input: NormalizedAmendTradeRequest;
+};
+
+export type AmendTradeResult =
+  | { kind: 'amended'; body: { trade: TradeResponse } }
+  | { kind: 'conflict'; currentTrade: TradeResponse }
+  | { kind: 'not-found' | 'forbidden' | 'no-changes' };

@@ -25,6 +25,7 @@ async function setup(role: 'TRADER' | 'READ_ONLY' = 'TRADER') {
   const app = createApp({
     auth: auth.repository,
     trades: {
+      amend: async () => { throw new Error('Unexpected trade amendment in this test.'); },
       list: async () => { throw new Error('Opening SSE must not load trades.'); },
       create: async () => { throw new Error('Opening SSE must not create trades.'); },
     },

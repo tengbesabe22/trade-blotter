@@ -31,6 +31,7 @@ async function setup(overrides: Partial<AuthRepository> = {}) {
     {
       auth: repository,
       trades: {
+        amend: async () => { throw new Error('Unexpected trade amendment in this test.'); },
         list: async () => ({ records: [], hasNextPage: false }),
         create: async () => {
           throw new Error('Unexpected trade creation in auth test.');

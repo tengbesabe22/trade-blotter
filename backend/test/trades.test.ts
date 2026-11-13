@@ -96,6 +96,10 @@ async function setup(options: SetupOptions = {}) {
 
   // Persistence is fake. Decimal values are real value objects, not DB connections.
   const trades: TradeRepository = {
+    amend: async () => {
+      throw new Error('Unexpected trade amendment in this test.');
+    },
+
     create: async () => {
       throw new Error('Unexpected trade creation in list test.');
     },

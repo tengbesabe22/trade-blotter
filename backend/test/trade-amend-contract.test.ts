@@ -14,7 +14,7 @@ test('amendment fields reuse create normalization without mutating the input', (
   const input = {
     expectedVersion: 3,
     changes: {
-      symbol: ' aapl ', side: 'SELL', quantity: '125.5', price: '10.25',
+      side: 'SELL', quantity: '125.5', price: '10.25',
       tradeDate: '2026-11-14T17:15:23+08:00',
       book: ' EQUITIES_US ', counterparty: ' Example Bank ',
     },
@@ -25,7 +25,7 @@ test('amendment fields reuse create normalization without mutating the input', (
   assert.deepEqual(amendTradeRequestSchema.parse(input), {
     expectedVersion: 3,
     changes: {
-      symbol: 'AAPL', side: 'SELL', quantity: '125.500000', price: '10.2500',
+      side: 'SELL', quantity: '125.500000', price: '10.2500',
       tradeDate: '2026-11-14T09:15:23.000Z',
       book: 'EQUITIES_US', counterparty: 'Example Bank',
     },
@@ -86,9 +86,16 @@ test('unknown and server-controlled fields are rejected at both object levels', 
   }).success, false);
 });
 
+test('symbol is immutable even when unchanged or combined with an editable field', () => {
+  for (const symbol of ['AAPL', 'MSFT']) {
+    for (const changes of [{ symbol }, { symbol, price: '228.5' }]) {
+      assert.equal(amendTradeRequestSchema.safeParse({ ...request, changes }).success, false);
+    }
+  }
+});
+
 test('supplied fields retain existing type, precision, range and timestamp rules', () => {
   for (const changes of [
-    { symbol: null }, { symbol: ' ' }, { symbol: 'A'.repeat(13) },
     { side: null }, { side: 'HOLD' },
     { price: null }, { price: 10 }, { price: '0' }, { price: '1.00001' }, { price: '1000000.0001' },
     { quantity: null }, { quantity: 10 }, { quantity: '-1' }, { quantity: '1.0000001' },

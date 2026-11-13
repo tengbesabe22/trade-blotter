@@ -73,6 +73,10 @@ async function setup(options: SetupOptions = {}) {
 
   // The fake supplies persistence outcomes; HTTP validation and mapping remain real.
   const trades: TradeRepository = {
+    amend: async () => {
+      throw new Error('Unexpected trade amendment in this test.');
+    },
+
     list: async () => {
       throw new Error('Creation must not load the current trade list.');
     },
