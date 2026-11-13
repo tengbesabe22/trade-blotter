@@ -1,0 +1,212 @@
+import assert from 'node:assert/strict';
+import test, { after, afterEach, type TestContext } from 'node:test';
+import { JSDOM } from 'jsdom';
+import { StrictMode } from 'react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { TradesPage } from '../src/trades/TradesPage';
+import type { LiveTradePage } from '../src/trades/trade-merge';
+import { sampleTrade, cancelledTrade, tradePage } from './trade-fixtures';
+
+const dom = new JSDOM('<!doctype html><html><body></body></html>', {
+  url: 'http://localhost:5173', pretendToBeVisual: true,
+});
+Object.defineProperties(globalThis, {
+  window: { configurable: true, value: dom.window },
+  document: { configurable: true, value: dom.window.document },
+  navigator: { configurable: true, value: dom.window.navigator },
+  HTMLElement: { configurable: true, value: dom.window.HTMLElement },
+  Element: { configurable: true, value: dom.window.Element },
+  MutationObserver: { configurable: true, value: dom.window.MutationObserver },
+  getComputedStyle: { configurable: true, value: dom.window.getComputedStyle.bind(dom.window) },
+  requestAnimationFrame: { configurable: true, value: dom.window.requestAnimationFrame.bind(dom.window) },
+  cancelAnimationFrame: { configurable: true, value: dom.window.cancelAnimationFrame.bind(dom.window) },
+  IS_REACT_ACT_ENVIRONMENT: { configurable: true, writable: true, value: true },
+});
+
+class FakeEventSource extends dom.window.EventTarget {
+  static sources: FakeEventSource[] = [];
+  static CLOSED = 2;
+  closed = false;
+  readyState = 0;
+  readonly url: string;
+  constructor(url: string) {
+    super();
+    this.url = url;
+    FakeEventSource.sources.push(this);
+  }
+  emit(name: string, data: unknown = {}) {
+    if (name === 'stream.ready') this.readyState = 1;
+    if (name === 'error' && !this.closed) this.readyState = 0;
+    this.dispatchEvent(new dom.window.MessageEvent(name, { data: JSON.stringify(data) }));
+  }
+  close() { this.closed = true; this.readyState = FakeEventSource.CLOSED; }
+}
+Object.defineProperty(globalThis, 'EventSource', { configurable: true, value: FakeEventSource });
+const { render, screen, fireEvent, act, cleanup, waitFor } = await import('@testing-library/react');
+afterEach(() => { cleanup(); FakeEventSource.sources = []; });
+after(() => dom.window.close());
+
+const ready = {
+  schemaVersion: 1, connectionId: 'd197282d-99ca-4260-833a-702f97d1cba8',
+  serverTime: '2026-11-13T09:00:00.000Z',
+};
+const newer = {
+  ...sampleTrade, id: 'f1550000-0000-4000-8000-000000100003', symbol: 'TSLA',
+  tradeDate: '2026-11-13T09:00:00.000Z',
+};
+const change = {
+  schemaVersion: 1, changeId: 'd197282d-99ca-4260-833a-702f97d1cba9',
+  type: 'TRADE_CREATED', occurredAt: ready.serverTime, trade: newer,
+};
+
+function setup(t: TestContext, transport: typeof fetch = async () => Response.json(tradePage([sampleTrade]))) {
+  const client = new QueryClient();
+  const fetchMock = t.mock.method(globalThis, 'fetch', transport);
+  const view = render(<QueryClientProvider client={client}><TradesPage onSessionExpired={() => {}} /></QueryClientProvider>);
+  const source = FakeEventSource.sources.at(-1);
+  assert.ok(source, 'The signed-in trade page must open an EventSource.');
+  assert.equal(source.url, '/api/events');
+  const page = () => client.getQueriesData<LiveTradePage>({ queryKey: ['trades'] })[0]?.[1];
+  return { ...view, client, source, fetchMock, page };
+}
+
+test('ready starts the snapshot; incoming trades update the Query cache and table without another GET', async (t) => {
+  const h = setup(t);
+  assert.equal(h.fetchMock.mock.callCount(), 0);
+  await act(async () => { h.source.emit('stream.ready', ready); });
+  await screen.findByText('AAPL');
+
+  await act(async () => { h.source.emit('trade.changed', change); });
+  await screen.findByText('TSLA');
+  assert.equal(h.fetchMock.mock.callCount(), 1);
+  assert.deepEqual(h.page()?.trades.map((trade) => trade.symbol), ['TSLA', 'AAPL']);
+  await act(async () => { h.source.emit('trade.changed', change); });
+  assert.equal(h.page()?.trades.length, 2);
+  assert.equal(h.fetchMock.mock.callCount(), 1);
+});
+
+test('events during initial load and a manual refresh survive older HTTP responses', async (t) => {
+  let finish!: (response: Response) => void;
+  let pending = new Promise<Response>((resolve) => { finish = resolve; });
+  const h = setup(t, async () => pending);
+  await act(async () => { h.source.emit('stream.ready', ready); });
+  await screen.findByText('Loading trades…');
+  await act(async () => {
+    h.source.emit('trade.changed', change);
+    finish(Response.json(tradePage([sampleTrade])));
+  });
+  await screen.findByText('TSLA');
+
+  pending = new Promise<Response>((resolve) => { finish = resolve; });
+  fireEvent.click(screen.getByRole('button', { name: 'Refresh trades' }));
+  const updated = { ...newer, version: 2, price: '250.0000' };
+  await act(async () => {
+    h.source.emit('trade.changed', { ...change, trade: updated });
+    finish(Response.json(tradePage([sampleTrade, newer])));
+  });
+  await waitFor(() => assert.equal(h.page()?.trades.find((trade) => trade.id === newer.id)?.version, 2));
+  assert.equal(h.page()?.trades[0]?.price, '250.0000');
+});
+
+test('older pages keep their rows, show a notice, and reuse the same connection', async (t) => {
+  const h = setup(t, async (input) => {
+    const olderPage = new URL(String(input), 'http://localhost').searchParams.has('after');
+    return Response.json(olderPage
+      ? tradePage([cancelledTrade])
+      : tradePage([sampleTrade], { nextCursor: 'older-page' }));
+  });
+  await act(async () => { h.source.emit('stream.ready', ready); });
+  await screen.findByText('AAPL');
+  fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+  await screen.findByText('MSFT');
+  await act(async () => { h.source.emit('trade.changed', change); });
+  assert.ok(await screen.findByText(/New trades received/));
+  assert.equal(screen.queryByText('TSLA'), null);
+  assert.deepEqual(h.page()?.trades.map((trade) => trade.symbol), ['MSFT']);
+  assert.equal(FakeEventSource.sources.length, 1);
+  fireEvent.click(screen.getByRole('button', { name: 'Refresh trades' }));
+  await waitFor(() => assert.equal(h.page()?.hasNewTrades, false));
+  assert.equal(screen.queryByText(/New trades received/), null);
+});
+
+test('reconnection retains rows, labels them stale, and fetches a new snapshot after ready', async (t) => {
+  let snapshots = 0;
+  const h = setup(t, async () => Response.json(tradePage(++snapshots === 1 ? [sampleTrade] : [newer, sampleTrade])));
+  await act(async () => { h.source.emit('stream.ready', ready); });
+  await screen.findByText('AAPL');
+  await act(async () => { h.source.emit('error'); });
+  assert.ok(screen.getByText(/Live connection lost/));
+  assert.ok(screen.getByText('AAPL'));
+
+  await act(async () => { h.source.emit('stream.ready', ready); });
+  await screen.findByText('TSLA');
+  assert.equal(snapshots, 2);
+});
+
+test('invalid event data closes the source and leaves cached trades intact', async (t) => {
+  const h = setup(t);
+  await act(async () => { h.source.emit('stream.ready', ready); });
+  await screen.findByText('AAPL');
+  await act(async () => { h.source.emit('trade.changed', { ...change, trade: { ...newer, price: 250 } }); });
+  assert.equal(h.source.closed, true);
+  assert.ok(screen.getByText(/Live updates unavailable/));
+  assert.deepEqual(h.page()?.trades, [sampleTrade]);
+});
+
+test('unmount closes the stream and late events cannot recreate the signed-out cache', async (t) => {
+  const h = setup(t);
+  await act(async () => { h.source.emit('stream.ready', ready); });
+  await screen.findByText('AAPL');
+  h.unmount();
+  assert.equal(h.source.closed, true);
+  h.client.clear();
+  await act(async () => { h.source.emit('trade.changed', change); });
+  assert.equal(h.client.getQueryCache().getAll().length, 0);
+});
+
+test('a terminal stream error offers manual refresh instead of claiming automatic reconnection', async (t) => {
+  const h = setup(t);
+  await act(async () => { h.source.emit('stream.ready', ready); });
+  await screen.findByText('AAPL');
+  await act(async () => { h.source.close(); h.source.emit('error'); });
+  assert.ok(screen.getByText(/Live updates unavailable/));
+  assert.equal(screen.queryByText(/reconnecting/), null);
+});
+
+test('Strict Mode leaves only one active connection and ignores the obsolete connection', async (t) => {
+  const client = new QueryClient();
+  const fetchMock = t.mock.method(globalThis, 'fetch', async () => Response.json(tradePage([sampleTrade])));
+  const view = render(
+    <StrictMode>
+      <QueryClientProvider client={client}><TradesPage onSessionExpired={() => {}} /></QueryClientProvider>
+    </StrictMode>,
+  );
+  assert.equal(FakeEventSource.sources.filter((source) => !source.closed).length, 1);
+  const obsolete = FakeEventSource.sources[0]!;
+  const active = FakeEventSource.sources.at(-1)!;
+  await act(async () => { obsolete.emit('stream.ready', ready); });
+  assert.equal(fetchMock.mock.callCount(), 0);
+  await act(async () => { active.emit('stream.ready', ready); });
+  await screen.findByText('AAPL');
+  assert.equal(fetchMock.mock.callCount(), 1);
+  view.unmount();
+  assert.ok(FakeEventSource.sources.every((source) => source.closed));
+});
+
+test('a full first page shows the live row without the new-trade notice', async (t) => {
+  const rows = Array.from({ length: 100 }, (_, index) => ({
+    ...sampleTrade,
+    id: `f1550000-0000-4000-8000-${String(100 - index).padStart(12, '0')}`,
+    symbol: `ROW${100 - index}`,
+  }));
+  const h = setup(t, async () => Response.json(tradePage(rows, { nextCursor: 'old-boundary' })));
+  await act(async () => { h.source.emit('stream.ready', ready); });
+  await screen.findByText('100 trades shown');
+  assert.equal(screen.getByRole('button', { name: 'Next' }).hasAttribute('disabled'), false);
+
+  await act(async () => { h.source.emit('trade.changed', change); });
+  await screen.findByText('TSLA');
+  assert.equal(h.page()?.hasNewTrades, true); // Pagination still needs a fresh boundary.
+  assert.equal(screen.queryByText(/New trades received/) === null, true);
+  assert.equal(screen.getByRole('button', { name: 'Next' }).hasAttribute('disabled'), true);
+});

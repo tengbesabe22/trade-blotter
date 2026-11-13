@@ -71,10 +71,14 @@ browser must merge by trade ID/version. No Last-Event-ID history replay is provi
 
 Disconnecting removes the subscription. A full 100-event broadcaster buffer also
 closes the connection, even if a write is blocked behind a slow browser. Reconnected
-clients must fetch current state; browser subscription/recovery is the next slice.
+clients fetch current state after the next ready event.
 
-To inspect delivery, sign in as different users in normal/private windows (ordinary
-tabs share cookies), then run this in both developer consoles:
+To test table updates, sign in as different users in normal/private windows
+(ordinary tabs share cookies). Leave both on the first page with the default
+newest-execution sort, then create a trade with a current execution time. The new
+row should appear in both tables without refreshing the receiving browser.
+
+For optional payload tracing, open an additional connection in each console:
 
 ```js
 const tradeEvents = new EventSource('/api/events');
@@ -84,10 +88,39 @@ tradeEvents.addEventListener('trade.changed', (event) => {
 ```
 
 Create a trade in one window. Both consoles should receive the same change/trade
-IDs. Run `tradeEvents.close()` when finished. The second table will not update yet.
+IDs. Run `tradeEvents.close()` when finished.
 
-**Next:** browser subscription, cache merging and reconnect recovery.
-Amendment/cancellation events and summaries are not implemented yet.
+## Browser cache behavior
+
+[useLiveTrades.ts](../frontend/src/trades/useLiveTrades.ts) keeps one EventSource
+connection per signed-in trade page, including across sorting/pagination changes.
+It waits for ready before the first page fetch and re-fetches the current page on
+reconnection. Incoming events are validated using the browser event contract.
+
+[trade-merge.ts](../frontend/src/trades/trade-merge.ts) merges by trade
+ID/version. The default first page inserts new rows in execution-time/ID descending
+order and remains bounded by its selected limit. Other pages/sorts update known
+rows, preserving navigation. The unseen-trade notice appears only on older pages;
+it is hidden on the first page. No GET is made for
+ordinary incoming events. The create form's existing success refresh is unchanged.
+
+The hook retains up to 200 newest received trades while HTTP requests are pending,
+then merges them into responses so a late snapshot cannot erase streamed changes.
+A live change that invalidates a full page cursor clears it; Refresh obtains a new
+cursor. The first page still suppresses the new-trade notice. Automatic bounded
+reconciliation and popup notifications are deferred.
+
+Connection errors retain rows with stale/reconnecting feedback. Invalid data or a
+terminal connection error switches to manual refresh. Signing out/unmounting closes
+the connection and late messages are ignored. Browsers without EventSource can
+still use manual refresh.
+
+**Known follow-up:** automatic recovery GETs currently use the API's normal activity
+policy and can renew idle time. Background-request classification was explicitly
+deferred to the next review; heartbeat and trade-event checks still never renew it.
+
+Amendment/cancellation events, summaries and broader automatic page reconciliation
+are not implemented yet.
 
 Tests use fake session persistence, a controlled clock and mocked timers, and
 read/cancel the real Hono response stream.

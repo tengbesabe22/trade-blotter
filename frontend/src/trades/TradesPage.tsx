@@ -1,7 +1,6 @@
 import { lazy, Suspense, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import { ApiError } from '../api/api-client';
-import { tradeApi } from '../api/trade-api';
+import { useLiveTrades, type StreamStatus } from './useLiveTrades';
 import { defaultTradeListQuery, type TradeListQuery } from '../api/trade-contract';
 import { TradeListControls } from './TradeListControls';
 import { TradePagination } from './TradePagination';
@@ -11,6 +10,13 @@ const TradeTable = lazy(async () => {
   const { TradeTable } = await import('./TradeTable');
   return { default: TradeTable };
 });
+
+const streamMessages = {
+  connecting: 'Connecting live updates…',
+  connected: 'Live updates connected',
+  reconnecting: 'Live connection lost. Showing last loaded data; reconnecting…',
+  unavailable: 'Live updates unavailable. Use Refresh trades.',
+} satisfies Record<StreamStatus, string>;
 
 type TradesPageProps = {
   onSessionExpired: () => void;
@@ -22,16 +28,7 @@ export function TradesPage({ onSessionExpired }: TradesPageProps) {
   const [cursorHistory, setCursorHistory] = useState<(string | null)[]>([null]);
   const request = { ...queryOptions, after: cursorHistory.at(-1) ?? undefined };
   const isFirstPage = cursorHistory.length === 1;
-  const query = useQuery({
-    queryKey: ['trades', request],
-    queryFn: ({ signal }) => tradeApi.list(request, signal),
-    // Release inactive pages instead of accumulating the full trading history.
-    gcTime: 0,
-    // Start with explicit refresh/retry; no polling or hidden retries.
-    retry: false,
-    refetchOnWindowFocus: false,
-    refetchOnReconnect: false,
-  });
+  const { query, streamStatus } = useLiveTrades(request);
 
   const trades = query.data?.trades;
   const sessionExpired = query.error instanceof ApiError && query.error.status === 401;
@@ -96,6 +93,16 @@ export function TradesPage({ onSessionExpired }: TradesPageProps) {
       ) : (
         <>
           <TradeListControls query={queryOptions} onChange={changeQuery} />
+          <p aria-live="polite" className="px-4 pb-3 text-sm text-slate-600 sm:px-6">
+            {streamStatus === 'connected' && query.isFetching
+              ? 'Synchronising live updates…'
+              : streamMessages[streamStatus]}
+          </p>
+          {!isFirstPage && query.data?.hasNewTrades && (
+            <p role="status" className="mx-4 mb-4 rounded-lg bg-blue-50 p-3 text-sm text-blue-900 sm:mx-6">
+              New trades received. Refresh trades to synchronise this page.
+            </p>
+          )}
           {query.isError && (
             <p role="alert" className="m-4 rounded-lg bg-red-50 p-4 text-sm text-red-800">
               {trades

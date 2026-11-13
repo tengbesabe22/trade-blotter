@@ -6,10 +6,14 @@ A TypeScript application for viewing and recording USD equity trades.
 creation with validation, idempotent retries, and transactional outbox storage.
 Trade reads support bounded cursor pages, server sorting, and filtering.
 
-**Next:** browser live updates, filter controls, amendment/cancellation, and deployment.
+**Next:** background-request idle handling, broader live-page reconciliation, filter controls, amendment/cancellation, and deployment.
 The frontend supports login, session restoration, logout, and a read-only trade
 grid with server sorting, Previous/Next pagination, manual refresh, and loading/empty/error states.
 Traders can create trades through a validated form; successful submissions refresh the current page.
+SSE inserts creation events directly into the default first-page cache. Other pages
+and sorts retain their position; the new-trade notice appears only on older pages.
+If a live insert changes a full page boundary, Refresh trades obtains a fresh cursor
+before Next is enabled.
 
 ## Run locally
 
@@ -111,7 +115,8 @@ Live database concurrency/rollback verification and p50/p95 measurements remain
 pending. Outbox records are stored; the relayer wakes after committed creates,
 at startup and every second for recovery. SSE creation-event delivery, heartbeats
 and session checks are implemented for one backend process. Browser subscriptions
-and table updates from SSE remain pending.
+update the default first page directly and resynchronise the current page after
+reconnection; broader automatic page reconciliation remains pending.
 
 ## Project map
 
