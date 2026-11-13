@@ -2,7 +2,30 @@
 
 `PATCH /api/trades/:id` is implemented for signed-in traders amending their own
 ACTIVE trades. Successful amendments are delivered through SSE. The frontend API
-client is implemented; the row action and inline form remain pending.
+client, ownership-aware row action and inline form are implemented.
+
+## Inline editor
+
+- **Amend** appears on your own ACTIVE rows. Other owners/cancelled rows show a dash;
+  reviewers have no Actions column. Backend authorization still applies.
+- Selecting a row opens its prefilled form above the table. Ticker/trade ID are fixed
+  context. Finish or discard that edit before choosing another row.
+- Save sends only effective changed fields plus the optional reason and original
+  version. Equivalent decimal formatting and reason-only edits make no request.
+- Pending saves disable duplicate submission and discard. Success closes the form,
+  confirms the trade and merges the returned record immediately without a GET.
+- SSE does not overwrite the draft. A newer trade blocks Save until **Load latest**
+  explicitly replaces the draft/version. A cancellation prevents further editing.
+- Network/server/malformed-success failures keep the draft and show an unconfirmed
+  outcome; they do not retry automatically. Check the current trade before another
+  intentional submission. Session expiry returns to sign-in.
+
+The form uses a responsive field layout, inline field errors and keyboard focus.
+Opening focuses the panel; closing returns focus to the Trades heading.
+
+Manual check: sign in as a trader, amend an owned ACTIVE row's price, and save.
+A second signed-in window should receive the update. Try another trader's row and
+a reviewer account to check action visibility. Cancellation UI is still pending.
 
 ## Editable fields
 
@@ -60,6 +83,7 @@ replace the submitted version automatically.
 
 HTTP errors retain their JSON in `ApiError.responseBody` as `unknown`. Validate it
 with `amendTradeConflictSchema` before using a conflict's `currentTrade` for review.
+The inline form follows this validation and verifies that the trade ID matches.
 
 ## Instrument corrections
 
@@ -90,6 +114,7 @@ After the transaction commits, the PATCH route wakes the existing outbox relayer
 without awaiting delivery. Both traders and reviewers receive `trade.changed`
 with `type: TRADE_AMENDED`, the complete trade and its new version. The browser
 accepts this type and reuses the existing version-aware cache merge without an
-extra GET for a visible row. Conflicts, rejections and no-ops produce no event.
+extra GET for a visible row. Successful PATCH responses enter the same version
+guard and buffer, so an older in-flight page response cannot undo the save. Conflicts, rejections and no-ops produce no event.
 The optional reason remains in the outbox payload and is not included in SSE.
 See the [stream guide](trade-stream-api.md#trade-creation-and-amendment-events).

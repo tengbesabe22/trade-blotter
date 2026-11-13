@@ -131,9 +131,11 @@ still authenticates and enforces idle/maximum expiry, but leaves `lastSeenAt`
 unchanged. Deliberate Refresh, pagination and sort changes count as user activity.
 Heartbeat and trade-event checks also never renew idle time.
 
-Amendment form controls, cancellation events, summaries and broader automatic page
-reconciliation are not implemented yet. Existing page/filter-membership limitations
-remain unchanged; this slice only enables amendment delivery and browser acceptance.
+The inline amendment form also supplies successful PATCH responses to the same
+version guard and buffer. It does not wait for SSE or refetch after saving; duplicate
+SSE delivery is harmless and older in-flight snapshots cannot undo the change.
+Cancellation controls/events, summaries and broader automatic page reconciliation
+remain pending; existing page/filter-membership limitations are unchanged.
 
 Tests use fake session persistence, a controlled clock and mocked timers, and
 read/cancel the real Hono response stream.

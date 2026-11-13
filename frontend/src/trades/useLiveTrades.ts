@@ -14,7 +14,7 @@ function eventData(event: Event): unknown {
 }
 
 // One SSE connection feeds the active Query cache; HTTP supplies initial/reconnect snapshots.
-export function useLiveTrades(request: TradeListQuery) {
+export function useLiveTrades(request: TradeListQuery, savedTrade: Trade | null = null) {
   const queryClient = useQueryClient();
   const queryKey = ['trades', request] as const;
   // Retain at most 200 newest trades, even after caching: an older HTTP response
@@ -65,6 +65,12 @@ export function useLiveTrades(request: TradeListQuery) {
     queryClient.setQueryData<LiveTradePage>(queryKey, (page) =>
       page ? mergeLiveTradePage(page, [trade], request) : undefined);
   });
+
+  // Mutation responses enter the same version guard/buffer as SSE. Using an effect
+  // also targets the latest page if navigation changed while the save was pending.
+  useEffect(() => {
+    if (savedTrade) receiveTrade(savedTrade);
+  }, [savedTrade]);
 
   useEffect(() => {
     if (typeof EventSource === 'undefined') return;

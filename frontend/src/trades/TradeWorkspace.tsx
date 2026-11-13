@@ -24,7 +24,7 @@ export function TradeWorkspace({ user, onSignedOut }: TradeWorkspaceProps) {
             onCreated={() => { void queryClient.invalidateQueries({ queryKey: ['trades'] }); }}
           />
         )}
-        <TradesPage onSessionExpired={onSignedOut} />
+        <TradesPage user={user} onSessionExpired={onSignedOut} />
       </div>
     </QueryClientProvider>
   );

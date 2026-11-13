@@ -1,5 +1,7 @@
+import { useMemo } from 'react';
 import { CellStyleModule, ClientSideRowModelModule, themeQuartz, type ColDef } from 'ag-grid-community';
-import { AgGridProvider, AgGridReact } from 'ag-grid-react';
+import { AgGridProvider, AgGridReact, type CustomCellRendererProps } from 'ag-grid-react';
+import type { CurrentUser } from '../api/auth-contract';
 import type { Trade } from '../api/trade-contract';
 
 const modules = [ClientSideRowModelModule, CellStyleModule];
@@ -61,14 +63,36 @@ const columns: ColDef<Trade>[] = [
   { field: 'id', headerName: 'Trade ID', width: 315 },
 ];
 
-export function TradeTable({ trades }: { trades: Trade[] }) {
+type TradeTableProps = {
+  trades: Trade[];
+  user: CurrentUser;
+  onAmend: (trade: Trade) => void;
+  amendDisabled: boolean;
+};
+
+export function TradeTable({ trades, user, onAmend, amendDisabled }: TradeTableProps) {
+  const actionColumn = useMemo<ColDef<Trade>>(() => ({
+    colId: 'actions', headerName: 'Actions', pinned: 'right', width: 110,
+    cellRenderer: ({ data }: CustomCellRendererProps<Trade>) => {
+      if (!data || data.ownerId !== user.id || data.status !== 'ACTIVE') return '—';
+      return (
+        <button type="button" disabled={amendDisabled} aria-label={`Amend ${data.symbol} trade ${data.id}`}
+          className="min-h-10 rounded px-3 font-semibold text-blue-700 hover:bg-blue-50 focus-visible:outline-2 focus-visible:outline-blue-700 disabled:opacity-50"
+          onClick={() => onAmend(data)}>Amend</button>
+      );
+    },
+  }), [user.id, onAmend, amendDisabled]);
+  // Live row changes must not rebuild column definitions and reset resized widths.
+  const tableColumns = useMemo(() => user.role === 'TRADER' ? [...columns, actionColumn] : columns,
+    [user.role, actionColumn]);
+
   return (
     <div className="h-[min(65svh,36rem)] min-h-72 w-full">
       <AgGridProvider modules={modules}>
         <AgGridReact<Trade>
           theme={theme}
           rowData={trades}
-          columnDefs={columns}
+          columnDefs={tableColumns}
           defaultColDef={defaultColumn}
           getRowId={({ data }) => data.id}
           rowHeight={44}

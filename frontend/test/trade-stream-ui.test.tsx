@@ -5,7 +5,7 @@ import { StrictMode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { TradesPage } from '../src/trades/TradesPage';
 import type { LiveTradePage } from '../src/trades/trade-merge';
-import { sampleTrade, cancelledTrade, tradePage } from './trade-fixtures';
+import { signedInTrader, sampleTrade, cancelledTrade, tradePage } from './trade-fixtures';
 
 const dom = new JSDOM('<!doctype html><html><body></body></html>', {
   url: 'http://localhost:5173', pretendToBeVisual: true,
@@ -62,7 +62,7 @@ const change = {
 function setup(t: TestContext, transport: typeof fetch = async () => Response.json(tradePage([sampleTrade]))) {
   const client = new QueryClient();
   const fetchMock = t.mock.method(globalThis, 'fetch', transport);
-  const view = render(<QueryClientProvider client={client}><TradesPage onSessionExpired={() => {}} /></QueryClientProvider>);
+  const view = render(<QueryClientProvider client={client}><TradesPage user={{ ...signedInTrader, role: 'TRADER' }} onSessionExpired={() => {}} /></QueryClientProvider>);
   const source = FakeEventSource.sources.at(-1);
   assert.ok(source, 'The signed-in trade page must open an EventSource.');
   assert.equal(source.url, '/api/events');
@@ -181,7 +181,7 @@ test('Strict Mode leaves only one active connection and ignores the obsolete con
   const fetchMock = t.mock.method(globalThis, 'fetch', async () => Response.json(tradePage([sampleTrade])));
   const view = render(
     <StrictMode>
-      <QueryClientProvider client={client}><TradesPage onSessionExpired={() => {}} /></QueryClientProvider>
+      <QueryClientProvider client={client}><TradesPage user={{ ...signedInTrader, role: 'TRADER' }} onSessionExpired={() => {}} /></QueryClientProvider>
     </StrictMode>,
   );
   assert.equal(FakeEventSource.sources.filter((source) => !source.closed).length, 1);

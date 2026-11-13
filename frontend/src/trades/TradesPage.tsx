@@ -1,7 +1,9 @@
-import { lazy, Suspense, useState } from 'react';
+import { lazy, Suspense, useCallback, useRef, useState } from 'react';
+import type { CurrentUser } from '../api/auth-contract';
+import { AmendTradeForm } from './AmendTradeForm';
 import { ApiError } from '../api/api-client';
 import { useLiveTrades, type StreamStatus } from './useLiveTrades';
-import { defaultTradeListQuery, type TradeListQuery } from '../api/trade-contract';
+import { defaultTradeListQuery, type TradeListQuery, type Trade } from '../api/trade-contract';
 import { TradeListControls } from './TradeListControls';
 import { TradePagination } from './TradePagination';
 
@@ -19,19 +21,34 @@ const streamMessages = {
 } satisfies Record<StreamStatus, string>;
 
 type TradesPageProps = {
+  user: CurrentUser;
   onSessionExpired: () => void;
 };
 
-export function TradesPage({ onSessionExpired }: TradesPageProps) {
+export function TradesPage({ user, onSessionExpired }: TradesPageProps) {
+  const [selectedTrade, setSelectedTrade] = useState<Trade | null>(null);
+  const [savedTrade, setSavedTrade] = useState<Trade | null>(null);
+  const [success, setSuccess] = useState('');
+  const tradesTitle = useRef<HTMLHeadingElement>(null);
   const [queryOptions, setQueryOptions] = useState(defaultTradeListQuery);
   // Each entry is the cursor used to request a visited page; null represents page one.
   const [cursorHistory, setCursorHistory] = useState<(string | null)[]>([null]);
   const request = { ...queryOptions, after: cursorHistory.at(-1) ?? undefined };
   const isFirstPage = cursorHistory.length === 1;
-  const { query, streamStatus, markUserRequest } = useLiveTrades(request);
+  const { query, streamStatus, markUserRequest } = useLiveTrades(request, savedTrade);
 
   const trades = query.data?.trades;
   const sessionExpired = query.error instanceof ApiError && query.error.status === 401;
+
+  const openAmendment = useCallback((trade: Trade) => {
+    setSelectedTrade(trade);
+    setSuccess('');
+  }, []);
+
+  function closeAmendment() {
+    setSelectedTrade(null);
+    tradesTitle.current?.focus();
+  }
 
   function changeQuery(nextQuery: TradeListQuery) {
     markUserRequest();
@@ -69,7 +86,7 @@ export function TradesPage({ onSessionExpired }: TradesPageProps) {
     <section aria-labelledby="trades-title" className="min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 p-4 sm:px-6">
         <div>
-          <h1 id="trades-title" className="text-xl font-semibold tracking-tight text-slate-950">
+          <h1 ref={tradesTitle} tabIndex={-1} id="trades-title" className="text-xl font-semibold tracking-tight text-slate-950">
             Trades
           </h1>
           <p aria-live="polite" className="mt-1 text-sm text-slate-600">
@@ -103,6 +120,21 @@ export function TradesPage({ onSessionExpired }: TradesPageProps) {
         </div>
       ) : (
         <>
+          {success && <p role="status" className="mx-4 mb-4 text-sm text-emerald-800 sm:mx-6">{success}</p>}
+          {selectedTrade && (
+            <AmendTradeForm
+              key={selectedTrade.id}
+              trade={selectedTrade}
+              latestTrade={trades?.find((trade) => trade.id === selectedTrade.id)}
+              onSessionExpired={onSessionExpired}
+              onDiscard={closeAmendment}
+              onAmended={(trade) => {
+                setSavedTrade(trade);
+                closeAmendment();
+                setSuccess('Trade amended: ' + trade.symbol + ' · ' + trade.id);
+              }}
+            />
+          )}
           <TradeListControls query={queryOptions} onChange={changeQuery} />
           <p aria-live="polite" className="px-4 pb-3 text-sm text-slate-600 sm:px-6">
             {streamStatus === 'connected' && query.isFetching
@@ -142,9 +174,11 @@ export function TradesPage({ onSessionExpired }: TradesPageProps) {
               <p className="px-4 py-3 text-xs leading-5 text-slate-600 sm:px-6">
                 Prices in USD · Execution times in UTC. Scroll horizontally to see all columns.
                 Use the sort controls to order all trades.
+                {user.role === 'TRADER' && ' You can amend only your own active trades.'}
               </p>
               <Suspense fallback={<p role="status" className="p-10 text-center text-sm text-slate-600">Preparing trade table…</p>}>
-                <TradeTable trades={trades} />
+                <TradeTable trades={trades} user={user} amendDisabled={selectedTrade !== null}
+                  onAmend={openAmendment} />
               </Suspense>
             </>
           )}

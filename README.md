@@ -5,10 +5,10 @@ A TypeScript application for viewing and recording USD equity trades.
 **Working:** individual login/logout, database sessions, trade listing, and trade
 creation with validation, idempotent retries, and transactional outbox storage.
 Trade reads support bounded cursor pages, server sorting, and filtering.
-The amendment API enforces ownership and optimistic concurrency, with SSE delivery;
-its form UI is pending.
+Traders can amend their own ACTIVE trades through an inline form, with ownership
+and version checks, immediate cache updates and SSE delivery.
 
-**Next:** broader live-page reconciliation, filter controls, amendment UI, cancellation, and deployment.
+**Next:** broader live-page reconciliation, filter controls, cancellation, and deployment.
 The frontend supports login, session restoration, logout, and a read-only trade
 grid with server sorting, Previous/Next pagination, manual refresh, and loading/empty/error states.
 Traders can create trades through a validated form; successful submissions refresh the current page.
@@ -116,8 +116,8 @@ requests, and manual dispatch. Backend tests use fake repositories/database
 operations; frontend API/component tests mock fetch. Neither needs a running PostgreSQL instance.
 
 Live database concurrency/rollback verification and p50/p95 measurements remain
-pending. Outbox records are stored; the relayer wakes after committed creates,
-at startup and every second for recovery. SSE creation-event delivery, heartbeats
+pending. Outbox records are stored; the relayer wakes after committed creates/amendments,
+at startup and every second for recovery. SSE creation/amendment delivery, heartbeats
 and session checks are implemented for one backend process. Browser subscriptions
 update the default first page directly and resynchronise the current page after
 reconnection; broader automatic page reconciliation remains pending.
