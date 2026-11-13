@@ -3,6 +3,22 @@
 `POST /api/trades` creates a trade for the logged-in trader.
 [Sign in first](authentication.md#sign-in). Read-only accounts receive `403`.
 
+## Frontend flow
+
+Traders select **New trade**, enter a seeded ticker and trade details, then submit.
+Execution time is entered in UTC; quantity and price stay decimal strings. The form
+validates fields before POST and displays backend validation errors without losing input.
+Reviewers have no create button; the backend also enforces their read-only role.
+
+After success, show the trade ID and refresh the current bounded trade page through
+TanStack Query. Sorting and page position are preserved, so the new trade may belong
+outside the visible page. Live updates are a later slice.
+
+Duplicate submission is blocked while saving. For a network failure, server error
+or malformed success response, freeze the submitted fields and offer **Retry trade**
+with the same key/body. This pending attempt stays in component memory; it is not
+restored after a browser reload. A definitive validation rejection permits editing.
+
 ## Request
 
 | Header | Value |

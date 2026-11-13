@@ -1,9 +1,9 @@
 # Frontend
 
 React + TypeScript + Vite, with Tailwind CSS and Oxlint.
-Login, logout, session restoration, and a read-only trade grid are implemented.
+Login, logout, session restoration, a trade grid and a trader-only create form are implemented.
 AG Grid Community displays one bounded page; TanStack Query manages the current request/cache.
-Filtering, trade forms, and live updates are next.
+Filter controls, amend/cancel forms and live updates are next.
 
 ## Commands
 
@@ -30,11 +30,13 @@ the origin aligned with the backend's local `APP_ORIGIN`. Build output is in
 | `src/api/auth-api.ts` | Login, current-user, and logout calls |
 | `src/api/auth-contract.ts` | Browser-side auth shapes and inferred types |
 | `src/api/trade-contract.ts` | Validates trade responses, including exact decimal strings |
+| `src/api/trade-create-contract.ts` | Create request/response validation with exact decimal strings |
 | `src/api/trade-api.ts` | Loads `/api/trades` with cookies and cancellation |
 | `src/App.tsx` | Restores the session and chooses checking, login, trading workspace, or retry views |
 | `src/auth/LoginForm.tsx` | Controlled email/password inputs, submission, pending state, and errors |
 | `src/auth/AccountPanel.tsx` | Compact account header and confirmed logout |
-| `src/trades/TradeWorkspace.tsx` | Owns a query cache for one signed-in workspace |
+| `src/trades/TradeWorkspace.tsx` | Owns the account query cache, gates creation by role and refreshes trades after success |
+| `src/trades/CreateTradeForm.tsx` | Form fields, validation, submission and same-key retry after uncertain responses |
 | `src/trades/TradesPage.tsx` | Owns page inputs, cursor history/query key, refresh and error states |
 | `src/trades/TradeListControls.tsx` | Server sort and page-size controls; changing either resets pagination |
 | `src/trades/TradePagination.tsx` | Previous from local history, Next from the response, and First page controls |
@@ -136,3 +138,16 @@ response metadata and cursor behavior. Filter form controls remain pending.
 
 The grid remains the largest production chunk. It is loaded on demand; further
 bundle optimisation and larger-dataset measurements remain future work.
+
+## Create trade
+
+Trader accounts see New trade. The form validates input and calls tradeApi.create(),
+which sends JSON and an Idempotency-Key to POST /api/trades. A successful response
+shows confirmation; TradeWorkspace invalidates the active trades query to reload
+its current page. This slice does not subscribe to SSE or merge events into the cache.
+
+Validation failures retain editable input. An uncertain result freezes the original
+submission and retries the same key/body. Pending attempts are held in component
+memory only. See the [create API guide](../docs/trade-create-api.md) for limits and
+error behavior. Component tests cover request payloads, duplicate prevention,
+network/server/invalid-response retries, role visibility and page refresh after success.

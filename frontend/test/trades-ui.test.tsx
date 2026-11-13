@@ -289,3 +289,33 @@ test('refresh does not add a cursor-history entry', async (t) => {
   await screen.findByText('AAPL');
   assert.deepEqual(cursors, [null, 'cursor-A', 'cursor-A', null]);
 });
+
+
+test('a trader creates through the workspace and the current page refreshes after success', async (t) => {
+  let created = false;
+  let reads = 0;
+  const mock = showTrades(t, async (_input, options) => {
+    if (options?.method === 'POST') {
+      created = true;
+      return Response.json({ trade: sampleTrade }, { status: 201 });
+    }
+    reads += 1;
+    return Response.json(tradePage(created ? [sampleTrade] : []));
+  });
+  await screen.findByText('No trades yet');
+  fireEvent.click(screen.getByRole('button', { name: 'New trade' }));
+  for (const [label, value] of [['Ticker', 'AAPL'], ['Quantity', '100'], ['Price (USD)', '227.45']]) {
+    fireEvent.change(screen.getByLabelText(label!), { target: { value } });
+  }
+  fireEvent.click(screen.getByRole('button', { name: 'Create trade' }));
+  await screen.findByText(/Trade created:/);
+  await screen.findByText('AAPL', { exact: true });
+  assert.equal(reads, 2);
+  assert.equal(mock.mock.calls.filter((call) => call.arguments[1]?.method === 'POST').length, 1);
+});
+
+test('the reviewer workspace does not offer trade creation', async (t) => {
+  showTrades(t, async () => Response.json(tradePage()), 'READ_ONLY');
+  await screen.findByText('No trades yet');
+  assert.equal(screen.queryByRole('button', { name: 'New trade' }), null);
+});

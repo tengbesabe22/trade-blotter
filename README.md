@@ -6,9 +6,10 @@ A TypeScript application for viewing and recording USD equity trades.
 creation with validation, idempotent retries, and transactional outbox storage.
 Trade reads support bounded cursor pages, server sorting, and filtering.
 
-**Next:** filter controls, trade forms, amendment/cancellation, SSE delivery, and deployment.
+**Next:** filter controls, amendment/cancellation, SSE delivery, and deployment.
 The frontend supports login, session restoration, logout, and a read-only trade
 grid with server sorting, Previous/Next pagination, manual refresh, and loading/empty/error states.
+Traders can create trades through a validated form; successful submissions refresh the current page.
 
 ## Run locally
 
