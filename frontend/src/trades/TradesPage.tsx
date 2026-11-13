@@ -59,7 +59,7 @@ export function TradesPage({ user, onSessionExpired }: TradesPageProps) {
 
   function nextPage() {
     const nextCursor = query.data?.pageInfo.nextCursor;
-    if (nextCursor && !query.isFetching) {
+    if (nextCursor && !query.isFetching && !query.isPlaceholderData) {
       markUserRequest();
       setCursorHistory((history) => [...history, nextCursor]);
     }
@@ -184,7 +184,7 @@ export function TradesPage({ user, onSessionExpired }: TradesPageProps) {
           )}
           <TradePagination
             pageInfo={query.data?.pageInfo}
-            isFetching={query.isFetching}
+            isFetching={query.isFetching || query.isPlaceholderData}
             isFirstPage={isFirstPage}
             onFirstPage={firstPage}
             onPrevious={previousPage}

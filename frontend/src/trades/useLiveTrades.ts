@@ -1,5 +1,5 @@
 import { useEffect, useEffectEvent, useRef, useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import { tradeApi } from '../api/trade-api';
 import type { Trade, TradeListQuery } from '../api/trade-contract';
 import { streamReadySchema, tradeChangeSchema } from '../api/trade-stream-contract';
@@ -29,6 +29,8 @@ export function useLiveTrades(request: TradeListQuery, savedTrade: Trade | null 
 
   const query = useQuery<LiveTradePage>({
     queryKey,
+    // Keep the grid mounted while changing pages so its height and scroll stay stable.
+    placeholderData: keepPreviousData,
     // Wait for ready, or allow HTTP-only fallback when streaming is unavailable.
     enabled: streamStatus === 'connected' || streamStatus === 'unavailable',
     queryFn: async ({ signal }) => {

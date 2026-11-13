@@ -190,11 +190,13 @@ test('Previous reuses earlier forward requests across three visited pages', asyn
   assert.equal(screen.getByRole('button', { name: 'Previous' }).hasAttribute('disabled'), true);
   fireEvent.click(screen.getByRole('button', { name: 'Next' }));
   await screen.findByText('MSFT');
+  await waitFor(() => assert.equal(screen.getByRole('button', { name: 'Next' }).hasAttribute('disabled'), false));
   fireEvent.click(screen.getByRole('button', { name: 'Next' }));
   await screen.findByText('TSLA');
   assert.equal(screen.getByRole('button', { name: 'Next' }).hasAttribute('disabled'), true);
   fireEvent.click(screen.getByRole('button', { name: 'Previous' }));
   await screen.findByText('MSFT');
+  await waitFor(() => assert.equal(screen.getByRole('button', { name: 'Previous' }).hasAttribute('disabled'), false));
   fireEvent.click(screen.getByRole('button', { name: 'Previous' }));
   await screen.findByText('AAPL');
   assert.equal(screen.getByRole('button', { name: 'Previous' }).hasAttribute('disabled'), true);
@@ -319,3 +321,55 @@ test('the reviewer workspace does not offer trade creation', async (t) => {
   await screen.findByText('No trades yet');
   assert.equal(screen.queryByRole('button', { name: 'New trade' }), null);
 });
+
+for (const direction of ['Next', 'Previous'] as const) {
+  test(`${direction} keeps the grid mounted and preserves scroll while loading and replacing rows`, async (t) => {
+    const rows = (symbol: string, offset: number) => Array.from({ length: 100 }, (_, index) => ({
+      ...sampleTrade, symbol,
+      id: 'f1550000-0000-4000-8000-' + String(offset + index).padStart(12, '0'),
+    })).reverse();
+    const firstPage = tradePage(rows('AAPL', 1000), { nextCursor: 'next-token' });
+    const secondPage = tradePage(rows('MSFT', 2000));
+    let defer = false;
+    let finish!: (response: Response) => void;
+    const pending = new Promise<Response>((resolve) => { finish = resolve; });
+    showTrades(t, async (input) => {
+      if (defer) return pending;
+      const after = new URL(String(input), 'http://localhost').searchParams.get('after');
+      return Response.json(after ? secondPage : firstPage);
+    });
+    await screen.findByText('100 trades shown');
+    await screen.findAllByText('AAPL', { exact: true });
+    if (direction === 'Previous') {
+      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+      await screen.findAllByText('MSFT', { exact: true });
+    }
+
+    const grid = screen.getByRole('grid');
+    const pagination = screen.getByRole('navigation', { name: 'Trade pages' });
+    const gridWrapper = grid.closest('.ag-root-wrapper')!;
+    const vertical = gridWrapper.querySelector<HTMLElement>('.ag-body-vertical-scroll-viewport');
+    const horizontal = gridWrapper.querySelector<HTMLElement>('.ag-body-horizontal-scroll-viewport');
+    assert.ok(vertical && horizontal);
+    vertical.scrollTop = 220;
+    horizontal.scrollLeft = 120;
+    fireEvent.scroll(vertical);
+    fireEvent.scroll(horizontal);
+
+    defer = true;
+    fireEvent.click(screen.getByRole('button', { name: direction }));
+    await waitFor(() => {
+      assert.equal(screen.getByRole('button', { name: 'Next' }).hasAttribute('disabled'), true);
+      assert.equal(screen.getByRole('button', { name: 'Previous' }).hasAttribute('disabled'), true);
+    });
+    assert.ok(screen.queryByRole('grid') === grid, 'Loading another page must not remove the grid and collapse the layout.');
+    assert.ok(screen.getByRole('navigation', { name: 'Trade pages' }) === pagination);
+    assert.equal(screen.queryByText('Loading trades…'), null);
+
+    await act(async () => { finish(Response.json(direction === 'Next' ? secondPage : firstPage)); });
+    await screen.findAllByText(direction === 'Next' ? 'MSFT' : 'AAPL', { exact: true });
+    assert.ok(screen.getByRole('grid') === grid, 'Keep the same grid when the requested rows arrive.');
+    assert.equal(vertical.scrollTop, 220);
+    assert.equal(horizontal.scrollLeft, 120);
+  });
+}

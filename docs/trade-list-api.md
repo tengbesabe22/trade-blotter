@@ -85,6 +85,9 @@ The UI provides server sort controls, 25/50/100/200 rows per page, Previous/Next
 First page, and refresh. Filter form controls remain pending; API filters work now.
 AG Grid renders the returned page without locally reordering it. TanStack Query
 keys include the active request and cancel obsolete fetches; inactive pages are released.
+During Next/Previous loading, the previous rows stay visible so the grid remains
+mounted and page height stays stable. AG Grid preserves scroll when rows change;
+navigation stays disabled until the requested page supplies its own cursor.
 
 Repository tests use fake database operations. A separate local HTTP smoke check
 verified all six sorts in both directions, replayed page requests for Previous, filtering,

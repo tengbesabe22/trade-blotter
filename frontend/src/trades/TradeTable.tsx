@@ -92,6 +92,7 @@ export function TradeTable({ trades, user, onAmend, amendDisabled }: TradeTableP
         <AgGridReact<Trade>
           theme={theme}
           rowData={trades}
+          suppressScrollOnNewData
           columnDefs={tableColumns}
           defaultColDef={defaultColumn}
           getRowId={({ data }) => data.id}

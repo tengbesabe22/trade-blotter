@@ -255,3 +255,22 @@ test('amendment events update an existing cached row without another GET or clos
   assert.equal(h.fetchMock.mock.callCount(), 1);
   assert.equal(h.source.closed, false);
 });
+
+test('a page waiting for SSE reconnection cannot reuse the previous page cursor', async (t) => {
+  const h = setup(t, async (input) => new URL(String(input), 'http://localhost').searchParams.has('after')
+    ? Response.json(tradePage([cancelledTrade], { nextCursor: 'third-page' }))
+    : Response.json(tradePage([sampleTrade], { nextCursor: 'second-page' })));
+  await act(async () => { h.source.emit('stream.ready', ready); });
+  await screen.findByText('AAPL');
+  await act(async () => { h.source.emit('error'); });
+  fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+  assert.ok(screen.getByRole('grid'));
+  assert.equal(screen.getByRole('button', { name: 'Next' }).hasAttribute('disabled'), true);
+  assert.equal(screen.getByRole('button', { name: 'Previous' }).hasAttribute('disabled'), true);
+  assert.equal(h.fetchMock.mock.callCount(), 1);
+
+  await act(async () => { h.source.emit('stream.ready', ready); });
+  await screen.findByText('MSFT');
+  assert.equal(h.fetchMock.mock.callCount(), 2);
+  assert.equal(screen.getByRole('button', { name: 'Next' }).hasAttribute('disabled'), false);
+});
