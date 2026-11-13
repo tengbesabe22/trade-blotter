@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { decodeTradeCursor, encodeTradeCursor, InvalidTradeCursorError } from '../src/trades/trade-cursor';
-import type { TradeCursorBoundary } from '../src/trades/trade-cursor';
-import { tradeListQuerySchema } from '../src/trades/trade-query-contract';
-import type { NormalizedTradeListQuery } from '../src/trades/trade-query-contract';
+import { decodeTradeCursor, encodeTradeCursor, InvalidTradeCursorError } from '../src/trades/listing/trade-cursor';
+import type { TradeCursorBoundary } from '../src/trades/listing/trade-cursor';
+import { tradeListQuerySchema } from '../src/trades/listing/trade-query-contract';
+import type { NormalizedTradeListQuery } from '../src/trades/listing/trade-query-contract';
 
 const tradeId = 'f1550000-0000-4000-8000-000000100001';
 const query = tradeListQuerySchema.parse({});

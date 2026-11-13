@@ -1,6 +1,6 @@
 import type { TradeRecord } from './trade-repository';
-import type { TradeCursorBoundary } from './trade-cursor';
-import type { NormalizedTradeListQuery } from './trade-query-contract';
+import type { TradeCursorBoundary } from './listing/trade-cursor';
+import type { NormalizedTradeListQuery } from './listing/trade-query-contract';
 import type { TradeResponse } from './trade-contract';
 
 export function toTradeResponse(trade: TradeRecord): TradeResponse {

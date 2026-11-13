@@ -73,6 +73,12 @@ Unknown keys (including before), duplicate singleton parameters and invalid valu
 `400 INVALID_CURSOR`. Invalid sessions return 401; unexpected failures return a
 sanitised 500.
 
+## Code organisation
+
+`backend/src/trades/listing/` holds the GET handler, query contract, cursor and
+Prisma query helpers. `trade-routes.ts` composes listing and creation; shared
+trade DTOs, mapping and repository remain in the parent directory.
+
 ## Frontend and verification
 
 The UI provides server sort controls, 25/50/100/200 rows per page, Previous/Next,

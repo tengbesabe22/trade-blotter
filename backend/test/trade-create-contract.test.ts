@@ -5,7 +5,7 @@ import {
   createTradeRequestSchema,
   createTradeResponseSchema,
   createTradeResultSchema,
-} from '../src/trades/trade-create-contract';
+} from '../src/trades/creation/trade-create-contract';
 import { tradeResponseSchema } from '../src/trades/trade-contract';
 
 const request = {

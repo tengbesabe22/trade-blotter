@@ -4,11 +4,11 @@ import {
   type CreateTradeCommand,
   type CreateTradeResponse,
   type CreateTradeResult,
-} from './trade-create-contract';
+} from './creation/trade-create-contract';
 import { toTradeResponse } from './trade-mapper';
-import type { NormalizedTradeListQuery } from './trade-query-contract';
-import type { TradeCursorBoundary } from './trade-cursor';
-import { tradeBoundaryFilter, tradeListFilters, tradeListOrder } from './trade-list-query';
+import type { NormalizedTradeListQuery } from './listing/trade-query-contract';
+import type { TradeCursorBoundary } from './listing/trade-cursor';
+import { tradeBoundaryFilter, tradeListFilters, tradeListOrder } from './listing/trade-list-query';
 
 // The mapper needs the symbol and display name, not complete account records.
 export type TradeRecord = Prisma.TradeGetPayload<{

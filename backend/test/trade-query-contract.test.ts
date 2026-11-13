@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { tradeListQuerySchema } from '../src/trades/trade-query-contract';
+import { tradeListQuerySchema } from '../src/trades/listing/trade-query-contract';
 
 const traderId = 'd197282d-99ca-4260-833a-702f97d1cba1';
 const otherTraderId = '14cad115-cfe2-402f-9934-a97657f91162';

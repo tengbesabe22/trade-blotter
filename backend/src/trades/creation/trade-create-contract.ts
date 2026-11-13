@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { priceSchema, quantitySchema, tradeDateSchema, tradeResponseSchema } from './trade-contract';
+import { priceSchema, quantitySchema, tradeDateSchema, tradeResponseSchema } from '../trade-contract';
 
 export const createTradeRequestSchema = z.strictObject({
   symbol: z.string()

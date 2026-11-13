@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { Prisma } from '@trade-blotter/database';
 import { createTradeRepository, type TradeRecord } from '../src/trades/trade-repository';
-import { tradeListQuerySchema } from '../src/trades/trade-query-contract';
-import { decodeTradeCursor, encodeTradeCursor } from '../src/trades/trade-cursor';
+import { tradeListQuerySchema } from '../src/trades/listing/trade-query-contract';
+import { decodeTradeCursor, encodeTradeCursor } from '../src/trades/listing/trade-cursor';
 
 function record(index: number): TradeRecord {
   return {

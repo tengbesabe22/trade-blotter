@@ -133,16 +133,18 @@ Errors return `{ "code": "...", "message": "..." }`.
 
 ## Code map and verification
 
-All feature files are in `backend/src/trades/`:
+Creation handlers and helpers live in `backend/src/trades/creation/`. Shared trade
+DTOs, mapping and persistence stay in `backend/src/trades/`:
 
 | File | Responsibility |
 | --- | --- |
-| `trade-routes.ts` | HTTP handlers and response statuses |
-| `trade-middleware.ts` | HTTP request guards |
+| `trade-routes.ts` | Composes listing and creation routes |
+| `creation/trade-create-routes.ts` | POST handler, validation and response statuses |
+| `creation/trade-middleware.ts` | HTTP request guards |
 | `trade-contract.ts` | Shared validators, response schemas, and inferred types |
-| `trade-create-contract.ts` | Creation request normalization, command, and result contracts |
+| `creation/trade-create-contract.ts` | Creation request normalization, command, and result contracts |
 | `trade-mapper.ts` | Database record to public response |
-| `trade-fingerprint.ts` | Canonical request hashing |
+| `creation/trade-fingerprint.ts` | Canonical request hashing |
 | `trade-repository.ts` | Queries, transaction, and idempotency recovery |
 
 `CreateTradeRequest` describes wire input; `NormalizedCreateTradeRequest` describes

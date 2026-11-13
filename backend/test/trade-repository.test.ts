@@ -3,7 +3,7 @@ import test from 'node:test';
 import { Prisma } from '@trade-blotter/database';
 import { createTradeRepository, type TradeRecord } from '../src/trades/trade-repository';
 import { toTradeResponse } from '../src/trades/trade-mapper';
-import type { CreateTradeCommand, CreateTradeResult } from '../src/trades/trade-create-contract';
+import type { CreateTradeCommand, CreateTradeResult } from '../src/trades/creation/trade-create-contract';
 
 const command: CreateTradeCommand = {
   userId: 'd197282d-99ca-4260-833a-702f97d1cba1',

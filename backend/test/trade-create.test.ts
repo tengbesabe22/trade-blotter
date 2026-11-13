@@ -9,7 +9,7 @@ import type {
   CreateTradeRequest,
   CreateTradeResponse,
   CreateTradeResult,
-} from '../src/trades/trade-create-contract';
+} from '../src/trades/creation/trade-create-contract';
 import type { TradeRepository } from '../src/trades/trade-repository';
 import { createAuthFixture, origin, user } from './auth-fixtures';
 
