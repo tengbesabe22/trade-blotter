@@ -5,7 +5,7 @@ import { requireSession, requireTrader, requireTrustedOrigin } from '../../auth/
 import type { TradeRepository } from '../trade-repository';
 import { createTradeRequestSchema, idempotencyKeySchema } from './trade-create-contract';
 import { tradeFingerprint } from './trade-fingerprint';
-import { tradeBodyLimit } from './trade-middleware';
+import { tradeBodyLimit } from '../trade-middleware';
 
 export function createTradeCreationRoutes(
   authRepository: AuthRepository,

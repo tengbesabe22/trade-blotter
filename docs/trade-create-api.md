@@ -140,9 +140,9 @@ DTOs, mapping and persistence stay in `backend/src/trades/`:
 
 | File | Responsibility |
 | --- | --- |
-| `trade-routes.ts` | Composes listing and creation routes |
+| `trade-routes.ts` | Composes listing, creation and amendment routes |
 | `creation/trade-create-routes.ts` | POST handler, validation and response statuses |
-| `creation/trade-middleware.ts` | HTTP request guards |
+| `trade-middleware.ts` | Shared 4 KiB request-body limit |
 | `trade-contract.ts` | Shared validators, response schemas, and inferred types |
 | `creation/trade-create-contract.ts` | Creation request normalization, command, and result contracts |
 | `trade-mapper.ts` | Database record to public response |

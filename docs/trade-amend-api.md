@@ -1,7 +1,7 @@
 # Amendments
 
-Status: request validation and repository persistence are implemented. The planned
-`PATCH /api/trades/:id` endpoint and amendment SSE delivery are not wired yet.
+`PATCH /api/trades/:id` is implemented for signed-in traders amending their own
+ACTIVE trades. Amendment SSE delivery and the frontend form remain pending.
 
 ## Editable fields
 
@@ -20,6 +20,35 @@ Validation and normalization follow the [creation rules](trade-create-api.md#req
 `expectedVersion` is a required positive integer. The optional reason is trimmed,
 limited to 500 characters, and saved in the outbox payload. Permanent audit history
 remains planned.
+
+## HTTP request and responses
+
+[Sign in first](authentication.md#sign-in). Send the session cookie, trusted Origin
+and `Content-Type: application/json`. Body limit: 4 KiB. No idempotency key is needed;
+`expectedVersion` protects against concurrent changes.
+
+Replace `<trade-id>` with a trade you own and use its current version:
+
+```sh
+curl -i -b .cookies -X PATCH 'http://localhost:3000/api/trades/<trade-id>' \
+  -H 'Origin: http://localhost:5173' \
+  -H 'Content-Type: application/json' \
+  -d '{"expectedVersion":3,"changes":{"price":"228.5"},"reason":"Correct price."}'
+```
+
+| Status | Response |
+| --- | --- |
+| 200 | `{trade}` containing the complete updated record |
+| 400 | `INVALID_INPUT` for invalid UUID/body; `NO_CHANGES` for an effective no-op |
+| 401 | `UNAUTHENTICATED` |
+| 403 | `FORBIDDEN` for read-only users/another owner; `FORBIDDEN_ORIGIN` for an untrusted origin |
+| 404 | `TRADE_NOT_FOUND` |
+| 409 | `TRADE_CONFLICT`, including `currentTrade` for a stale/cancelled record |
+| 413 / 415 | `PAYLOAD_TOO_LARGE` / `UNSUPPORTED_MEDIA_TYPE` |
+| 500 | Sanitized `INTERNAL_ERROR` |
+
+Responses use `Cache-Control: no-store`. On conflict, retain the draft and review
+`currentTrade`; never silently substitute its version and retry the edit.
 
 ## Instrument corrections
 
