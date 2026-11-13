@@ -5,6 +5,7 @@ import { createSessionRoutes } from './auth/session-routes';
 import type { AuthOptions } from './auth/auth-contract';
 import type { TradeRepository } from './trades/trade-repository';
 import { createTradeRoutes } from './trades/trade-routes';
+import { createTradeStreamRoutes } from './trades/sse/trade-stream-routes';
 
 export type AppRepositories = { auth: AuthRepository; trades: TradeRepository };
 
@@ -23,6 +24,7 @@ export function createApp(repositories: AppRepositories, options: AuthOptions) {
   app.route('/api/auth', createLoginRoutes(repositories.auth, options));
   app.route('/api/auth', createSessionRoutes(repositories.auth, options));
   app.route('/api/trades', createTradeRoutes(repositories.auth, repositories.trades, options));
+  app.route('/api/events', createTradeStreamRoutes(repositories.auth, options));
 
   app.onError((error, c) => {
     console.error('Request failed:', error.name);

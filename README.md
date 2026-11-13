@@ -82,10 +82,12 @@ All seeded trades and prices are fictional.
 | GET | `/api/auth/me` | Read the current account and role |
 | POST | `/api/auth/logout` | Revoke the current session |
 | GET | `/api/trades` | Read a bounded, sortable/filterable cursor page |
+| GET | `/api/events` | Open an authenticated SSE connection; ready event only |
 | POST | `/api/trades` | Create a trade or replay its saved response |
 
 Start with [authentication and curl examples](docs/authentication.md), then
-[listing trades](docs/trade-list-api.md) and [creating a trade](docs/trade-create-api.md).
+[listing trades](docs/trade-list-api.md), [creating a trade](docs/trade-create-api.md),
+and the [SSE connection](docs/trade-stream-api.md).
 
 ## Checks and build
 
