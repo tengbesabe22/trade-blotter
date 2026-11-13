@@ -82,7 +82,7 @@ All seeded trades and prices are fictional.
 | GET | `/api/auth/me` | Read the current account and role |
 | POST | `/api/auth/logout` | Revoke the current session |
 | GET | `/api/trades` | Read a bounded, sortable/filterable cursor page |
-| GET | `/api/events` | Open an authenticated SSE connection; ready event only |
+| GET | `/api/events` | Open an authenticated SSE connection; ready event, heartbeats and session checks |
 | POST | `/api/trades` | Create a trade or replay its saved response |
 
 Start with [authentication and curl examples](docs/authentication.md), then
@@ -108,7 +108,8 @@ requests, and manual dispatch. Backend tests use fake repositories/database
 operations; frontend API/component tests mock fetch. Neither needs a running PostgreSQL instance.
 
 Live database concurrency/rollback verification and p50/p95 measurements remain
-pending. Outbox records are stored; event dispatch and SSE are not implemented yet.
+pending. Outbox records are stored; SSE connections, heartbeats and session checks
+are implemented. Trade-event dispatch and browser subscriptions remain pending.
 
 ## Project map
 

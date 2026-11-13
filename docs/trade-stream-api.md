@@ -1,6 +1,6 @@
 # SSE connection
 
-This first slice adds an authenticated `GET /api/events` connection.
+The API exposes an authenticated `GET /api/events` connection.
 Both traders and read-only accounts can connect using their existing session cookie.
 
 After [signing in](authentication.md#sign-in), test it with:
@@ -18,13 +18,30 @@ retry: 1000
 
 ```
 
-The blank line ends the event. The connection stays open until the client
-disconnects; Ctrl+C closes curl. `retry` tells a browser EventSource to wait
+The blank line ends the event. The connection stays open while the session is
+valid and the client remains connected; Ctrl+C closes curl. `retry` tells a browser EventSource to wait
 1,000 milliseconds before reconnecting after a disconnection.
 
 The route reuses session validation with activity recording disabled. Opening or
 reconnecting a stream must not keep an otherwise idle account signed in.
 Missing, revoked, idle-expired or hard-expired sessions receive 401 at connection time.
+
+Every 15 seconds, the server reads the session again. If it is still valid, it sends
+an SSE comment (`: heartbeat` followed by a blank line). Comments keep traffic
+flowing through idle connections without triggering browser message handlers.
+This follows the [SSE specification's authoring guidance](https://html.spec.whatwg.org/multipage/server-sent-events.html#authoring-notes).
+
+If the session is deleted (logout), idle for 5 minutes or past its 8-hour maximum,
+the server closes the stream on the next check. This is periodic detection, not
+instant revocation; database/network delays can extend it. Checks use current
+activity from other API requests and never update `lastSeenAt` themselves.
+An open response cannot change its status to 401; a new connection is validated
+again and receives 401 if the session remains invalid.
+
+Checks run sequentially, with one indexed session read per connection per interval.
+Disconnecting cancels the pending timer and removes the request abort listener.
+A session lookup failure closes the stream and is logged on the server without
+sending internal error details to the client.
 
 The ready payload is defined in
 [trade-stream-contract.ts](../backend/src/trades/sse/trade-stream-contract.ts); the route lives in
@@ -32,10 +49,10 @@ The ready payload is defined in
 abort listener when the connection ends. Responses use no-store and disable
 proxy buffering through X-Accel-Buffering.
 
-**Not implemented in this slice:** heartbeats, ongoing session checks, trade-event
-delivery, outbox dispatch or browser subscriptions. Those will be added in separate
+**Not implemented yet:** trade-event delivery, outbox dispatch or browser subscriptions. Those will be added in separate
 reviewable steps before the stream carries trades. Ready currently confirms only
 that an authenticated connection opened.
 
-Tests use fake session persistence and read/cancel the real Hono response stream.
+Tests use fake session persistence, a controlled clock and mocked timers, and
+read/cancel the real Hono response stream.
 No running database is required.

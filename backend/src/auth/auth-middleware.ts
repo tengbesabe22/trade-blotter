@@ -2,8 +2,13 @@ import type { MiddlewareHandler } from 'hono';
 import { deleteCookie, getCookie } from 'hono/cookie';
 import type { AuthRepository } from './auth-repository';
 import type { AuthEnv, AuthOptions } from './auth-contract';
-import { SESSION_COOKIE_NAME, SESSION_IDLE_TIMEOUT_MS } from './session-config';
-import { hashSessionToken, isValidSessionToken, sessionCookieOptions } from './session-utils';
+import { SESSION_COOKIE_NAME } from './session-config';
+import {
+  hashSessionToken,
+  isSessionActive,
+  isValidSessionToken,
+  sessionCookieOptions,
+} from './session-utils';
 
 export function requireTrustedOrigin(origin: string): MiddlewareHandler {
   return async (c, next) => {
@@ -30,14 +35,8 @@ export function requireSession(
     const tokenHash = isValidSessionToken(token) ? hashSessionToken(token) : null;
     const session = tokenHash ? await repository.findSession(tokenHash) : null;
     const now = options.now?.() ?? new Date();
-    const idleCutoff = now.getTime() - SESSION_IDLE_TIMEOUT_MS;
 
-    if (
-      !tokenHash ||
-      !session ||
-      session.expiresAt.getTime() <= now.getTime() ||
-      session.lastSeenAt.getTime() <= idleCutoff
-    ) {
+    if (!tokenHash || !isSessionActive(session, now)) {
       deleteCookie(c, SESSION_COOKIE_NAME, sessionCookieOptions(options.secureCookies));
 
       return c.json({ code: 'UNAUTHENTICATED', message: 'Please log in again.' }, 401);
