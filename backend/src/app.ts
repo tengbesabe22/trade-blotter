@@ -6,9 +6,13 @@ import type { AuthOptions } from './auth/auth-contract';
 import type { TradeRepository } from './trades/trade-repository';
 import { createTradeRoutes } from './trades/trade-routes';
 import { createTradeStreamRoutes } from './trades/sse/trade-stream-routes';
+import { createTradeBroadcaster, type TradeBroadcaster } from './trades/sse/trade-broadcaster';
 
 export type AppRepositories = { auth: AuthRepository; trades: TradeRepository };
-type AppServices = { onTradeCreated?: () => void };
+type AppServices = {
+  onTradeCreated?: () => void;
+  broadcaster?: TradeBroadcaster;
+};
 
 // Separate app construction from the listening server so requests are testable.
 export function createApp(
@@ -17,6 +21,7 @@ export function createApp(
   services: AppServices = {},
 ) {
   const app = new Hono();
+  const broadcaster = services.broadcaster ?? createTradeBroadcaster();
 
   app.get('/api/health', (c) => c.json({ status: 'ok' }));
 
@@ -34,7 +39,7 @@ export function createApp(
     options,
     services.onTradeCreated,
   ));
-  app.route('/api/events', createTradeStreamRoutes(repositories.auth, options));
+  app.route('/api/events', createTradeStreamRoutes(repositories.auth, options, broadcaster));
 
   app.onError((error, c) => {
     console.error('Request failed:', error.name);

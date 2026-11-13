@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import test from 'node:test';
 import { createApp } from '../src/app';
-import { streamReadySchema } from '../src/trades/sse/trade-stream-contract';
+import { streamReadySchema, tradeChangeSchema, type TradeChange } from '../src/trades/sse/trade-stream-contract';
+import { createTradeBroadcaster } from '../src/trades/sse/trade-broadcaster';
 import { createAuthFixture, origin, user } from './auth-fixtures';
 
 const startTime = Date.parse('2026-11-13T09:00:00Z');
@@ -11,6 +12,7 @@ const tokenHash = createHash('sha256').update(token).digest('hex');
 
 async function setup(role: 'TRADER' | 'READ_ONLY' = 'TRADER') {
   const auth = createAuthFixture();
+  const broadcaster = createTradeBroadcaster();
   auth.users.get('jsmith@example.com')!.role = role;
   let time = startTime + 60_000;
 
@@ -26,10 +28,10 @@ async function setup(role: 'TRADER' | 'READ_ONLY' = 'TRADER') {
       list: async () => { throw new Error('Opening SSE must not load trades.'); },
       create: async () => { throw new Error('Opening SSE must not create trades.'); },
     },
-  }, { origin, secureCookies: false, now: () => new Date(time) });
+  }, { origin, secureCookies: false, now: () => new Date(time) }, { broadcaster });
 
   return {
-    auth,
+    auth, app, broadcaster,
     setTime: (next: number) => { time = next; },
     request: (authenticated = true, signal?: AbortSignal) => app.request('/api/events', {
       headers: authenticated ? { Cookie: 'blotter_session=' + token } : {},
@@ -246,6 +248,119 @@ test('SSE closes safely if an ongoing session lookup fails', async (t) => {
     t.mock.timers.tick(60_000);
     await settle();
     assert.equal(findSession.mock.callCount(), 1);
+  } finally {
+    await reader.cancel();
+  }
+});
+
+const change: TradeChange = {
+  schemaVersion: 1,
+  changeId: 'd197282d-99ca-4260-833a-702f97d1cba2',
+  type: 'TRADE_CREATED',
+  occurredAt: '2026-11-13T09:01:00.000Z',
+  trade: {
+    id: 'f1550000-0000-4000-8000-000000100003',
+    symbol: 'AAPL', side: 'BUY', quantity: '5000.000000', price: '227.4500',
+    trader: user.displayName, ownerId: user.id,
+    book: null, counterparty: null, status: 'ACTIVE', version: 1,
+    tradeDate: '2026-11-13T09:00:00.000Z',
+    createdAt: '2026-11-13T09:01:00.000Z', updatedAt: '2026-11-13T09:01:00.000Z',
+  },
+};
+
+for (const role of ['TRADER', 'READ_ONLY'] as const) {
+  test(`SSE immediately sends the complete event to its owner and a different ${role}`, async () => {
+    const h = await setup();
+    const other = { ...user, id: 'd197282d-99ca-4260-833a-702f97d1cba4', displayName: 'ADOE', role };
+    const otherToken = 'b'.repeat(43);
+    h.auth.users.set('adoe@example.com', other);
+    await h.auth.repository.createSession({
+      userId: other.id, tokenHash: createHash('sha256').update(otherToken).digest('hex'),
+      lastSeenAt: new Date(startTime), expiresAt: new Date(startTime + 8 * 60 * 60_000),
+    });
+    const first = (await h.request()).body!.getReader();
+    const secondResponse = await h.app.request('/api/events', {
+      headers: { Cookie: `blotter_session=${otherToken}` },
+    });
+    const second = secondResponse.body!.getReader();
+
+    try {
+      // Events arriving during the handshake must stay buffered behind stream.ready.
+      h.broadcaster.broadcast(change);
+      for (const reader of [first, second]) {
+        assert.match(new TextDecoder().decode((await reader.read()).value), /event: stream.ready/);
+        const frame = new TextDecoder().decode((await readNext(reader)).value);
+        assert.match(frame, /event: trade.changed/);
+        assert.match(frame, new RegExp(`id: ${change.changeId}`));
+        const data = frame.split('\n').find((line) => line.startsWith('data: '))!.slice(6);
+        assert.deepEqual(tradeChangeSchema.parse(JSON.parse(data)), change);
+      }
+      assert.equal(h.auth.sessions.get(tokenHash)?.lastSeenAt.getTime(), startTime);
+    } finally {
+      await first.cancel();
+      await second.cancel();
+    }
+  });
+}
+
+test('SSE cancels its broadcaster subscription when the client disconnects', async (t) => {
+  const h = await setup();
+  let cancelled = 0;
+  t.mock.method(h.broadcaster, 'subscribe', () => new ReadableStream<TradeChange>({
+    cancel: () => { cancelled += 1; },
+  }));
+  const reader = (await h.request()).body!.getReader();
+  try {
+    await reader.read();
+  } finally {
+    await reader.cancel();
+  }
+  await settle();
+  assert.equal(cancelled, 1);
+});
+
+test('a revoked session cannot receive a trade before its next heartbeat', async () => {
+  const h = await setup();
+  const reader = (await h.request()).body!.getReader();
+  try {
+    await reader.read();
+    h.auth.sessions.clear();
+    h.broadcaster.broadcast(change);
+    assert.equal((await readNext(reader)).done, true);
+  } finally {
+    await reader.cancel();
+  }
+});
+
+test('a session lookup failure during trade delivery closes the stream safely', async (t) => {
+  const h = await setup();
+  const reader = (await h.request()).body!.getReader();
+  try {
+    await reader.read();
+    t.mock.method(h.auth.repository, 'findSession', async () => { throw new Error('Private database details'); });
+    t.mock.method(console, 'error', () => {});
+    h.broadcaster.broadcast(change);
+    assert.equal((await readNext(reader)).done, true);
+  } finally {
+    await reader.cancel();
+  }
+});
+
+test('broadcaster overflow closes SSE even when a trade write is blocked', async () => {
+  const h = await setup();
+  const reader = (await h.request()).body!.getReader();
+  try {
+    await reader.read();
+    await settle();
+    h.broadcaster.broadcast(change);
+    await settle();
+    h.broadcaster.broadcast(change);
+    await settle();
+    for (let index = 0; index < 101; index += 1) h.broadcaster.broadcast(change);
+    await settle();
+
+    await readNext(reader); // A frame already buffered in the HTTP response can remain.
+    assert.equal((await readNext(reader)).done, true);
   } finally {
     await reader.cancel();
   }

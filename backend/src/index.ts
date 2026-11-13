@@ -36,7 +36,10 @@ const relayer = createOutboxRelayer(createOutboxRepository(prisma), broadcaster.
 const app = createApp(
   { auth: authRepository, trades: tradeRepository },
   { origin, secureCookies },
-  { onTradeCreated: () => { void relayer.wake(); } },
+  {
+    broadcaster,
+    onTradeCreated: () => { void relayer.wake(); },
+  },
 );
 
 const server = serve({ fetch: app.fetch, port: Number(process.env.PORT ?? 3000) }, (info) => {

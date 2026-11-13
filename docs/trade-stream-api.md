@@ -38,7 +38,8 @@ activity from other API requests and never update `lastSeenAt` themselves.
 An open response cannot change its status to 401; a new connection is validated
 again and receives 401 if the session remains invalid.
 
-Checks run sequentially, with one indexed session read per connection per interval.
+Sessions are also checked before each trade event. Neither trade delivery nor
+heartbeats update `lastSeenAt`.
 Disconnecting cancels the pending timer and removes the request abort listener.
 A session lookup failure closes the stream and is logged on the server without
 sending internal error details to the client.
@@ -49,12 +50,44 @@ The ready payload is defined in
 abort listener when the connection ends. Responses use no-store and disable
 proxy buffering through X-Accel-Buffering.
 
-The outbox relayer now runs after committed creates, at startup and every second
-for recovery. The SSE route does not consume broadcaster events yet.
+## Trade creation events
 
-**Not implemented yet:** trade-event delivery or browser subscriptions. Those will be added in separate
-reviewable steps before the stream carries trades. Ready currently confirms only
-that an authenticated connection opened.
+The outbox relayer runs after committed creates, at startup and every second for
+recovery. It broadcasts through the same instance used by this route. Each
+connection subscribes before `stream.ready`, then sends queued changes immediately
+without waiting for a heartbeat or fetching trades again.
+
+```text
+id: <outbox event UUID>
+event: trade.changed
+data: <complete TradeChange JSON>
+
+```
+
+The JSON contains `schemaVersion: 1`, `changeId`, `type: TRADE_CREATED`, `occurredAt`
+and the complete `trade` DTO. Both account roles receive events for all traders.
+The POST response remains `{trade}`. Duplicate event delivery is possible; the
+browser must merge by trade ID/version. No Last-Event-ID history replay is provided.
+
+Disconnecting removes the subscription. A full 100-event broadcaster buffer also
+closes the connection, even if a write is blocked behind a slow browser. Reconnected
+clients must fetch current state; browser subscription/recovery is the next slice.
+
+To inspect delivery, sign in as different users in normal/private windows (ordinary
+tabs share cookies), then run this in both developer consoles:
+
+```js
+const tradeEvents = new EventSource('/api/events');
+tradeEvents.addEventListener('trade.changed', (event) => {
+  console.log(JSON.parse(event.data));
+});
+```
+
+Create a trade in one window. Both consoles should receive the same change/trade
+IDs. Run `tradeEvents.close()` when finished. The second table will not update yet.
+
+**Next:** browser subscription, cache merging and reconnect recovery.
+Amendment/cancellation events and summaries are not implemented yet.
 
 Tests use fake session persistence, a controlled clock and mocked timers, and
 read/cancel the real Hono response stream.

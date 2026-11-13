@@ -113,8 +113,9 @@ A concurrent user/key conflict rolls back the losing transaction, then reads and
 compares the winner's committed result. Unrelated database errors propagate.
 
 After commit, a new create wakes the relayer without waiting for delivery.
-Startup and 1-second recovery checks find missed wakes and due retries. SSE trade
-delivery remains pending. Creation reuses the catalog lookup for its response.
+Startup and 1-second recovery checks find missed wakes and due retries. Connected
+clients receive the complete trade through [SSE](trade-stream-api.md); browser
+cache integration remains pending. Creation reuses the catalog lookup for its response.
 
 ## Errors
 

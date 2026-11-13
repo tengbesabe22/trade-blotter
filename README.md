@@ -6,7 +6,7 @@ A TypeScript application for viewing and recording USD equity trades.
 creation with validation, idempotent retries, and transactional outbox storage.
 Trade reads support bounded cursor pages, server sorting, and filtering.
 
-**Next:** filter controls, amendment/cancellation, SSE delivery, and deployment.
+**Next:** browser live updates, filter controls, amendment/cancellation, and deployment.
 The frontend supports login, session restoration, logout, and a read-only trade
 grid with server sorting, Previous/Next pagination, manual refresh, and loading/empty/error states.
 Traders can create trades through a validated form; successful submissions refresh the current page.
@@ -82,7 +82,7 @@ All seeded trades and prices are fictional.
 | GET | `/api/auth/me` | Read the current account and role |
 | POST | `/api/auth/logout` | Revoke the current session |
 | GET | `/api/trades` | Read a bounded, sortable/filterable cursor page |
-| GET | `/api/events` | Open an authenticated SSE connection; ready event, heartbeats and session checks |
+| GET | `/api/events` | Stream trade creations with heartbeats and session checks |
 | POST | `/api/trades` | Create a trade or replay its saved response |
 
 Start with [authentication and curl examples](docs/authentication.md), then
@@ -109,9 +109,9 @@ operations; frontend API/component tests mock fetch. Neither needs a running Pos
 
 Live database concurrency/rollback verification and p50/p95 measurements remain
 pending. Outbox records are stored; the relayer wakes after committed creates,
-at startup and every second for recovery. SSE connections, heartbeats and session
-checks are implemented; trade-event delivery to SSE and browser subscriptions
-remain pending.
+at startup and every second for recovery. SSE creation-event delivery, heartbeats
+and session checks are implemented for one backend process. Browser subscriptions
+and table updates from SSE remain pending.
 
 ## Project map
 
