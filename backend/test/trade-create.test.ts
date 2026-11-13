@@ -53,6 +53,7 @@ function fingerprint(input: NormalizedCreateTradeRequest): string {
 type SetupOptions = {
   role?: CurrentUser['role'];
   create?: (command: CreateTradeCommand) => Promise<CreateTradeResult>;
+  onTradeCreated?: () => void;
 };
 
 async function setup(options: SetupOptions = {}) {
@@ -61,6 +62,7 @@ async function setup(options: SetupOptions = {}) {
   const now = new Date('2026-11-12T09:00:00Z');
   const token = 'a'.repeat(43);
   const commands: CreateTradeCommand[] = [];
+  const notifications: string[] = [];
 
   await auth.repository.createSession({
     userId: user.id,
@@ -87,6 +89,10 @@ async function setup(options: SetupOptions = {}) {
   const app = createApp(
     { auth: auth.repository, trades },
     { origin, secureCookies: false, now: () => now },
+    { onTradeCreated: () => {
+      notifications.push('created');
+      return options.onTradeCreated?.();
+    } },
   );
 
   function request(body: unknown = requestBody, overrides: Record<string, string | null> = {}) {
@@ -109,7 +115,7 @@ async function setup(options: SetupOptions = {}) {
     });
   }
 
-  return { request, commands };
+  return { request, commands, notifications };
 }
 
 async function expectError(response: Response, status: number, code: string) {
@@ -338,4 +344,50 @@ test('create hides unexpected persistence errors', async () => {
     code: 'INTERNAL_ERROR',
     message: 'An unexpected error occurred.',
   });
+});
+
+test('create wakes delivery only after persistence resolves and does not await delivery', async () => {
+  let commit!: (result: CreateTradeResult) => void;
+  const pendingCommit = new Promise<CreateTradeResult>((resolve) => { commit = resolve; });
+  const h = await setup({
+    create: () => pendingCommit,
+    onTradeCreated: () => new Promise<void>(() => {}), // Delivery is still running.
+  });
+
+  const response = h.request();
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.deepEqual(h.notifications, []);
+
+  commit({ kind: 'created', body: createdBody });
+  const completed = await Promise.race([
+    response,
+    new Promise<never>((_, reject) => {
+      setImmediate(() => reject(new Error('The HTTP response must not wait for delivery.')));
+    }),
+  ]);
+  assert.equal(completed.status, 201);
+  assert.deepEqual(await completed.json(), createdBody);
+  assert.deepEqual(h.notifications, ['created']);
+});
+
+test('idempotent replay and rejected create results do not wake delivery', async () => {
+  const cases: [CreateTradeResult, number][] = [
+    [{ kind: 'replayed', body: createdBody }, 201],
+    [{ kind: 'unknown-instrument' }, 400],
+    [{ kind: 'idempotency-conflict' }, 409],
+  ];
+
+  for (const [result, status] of cases) {
+    const h = await setup({ create: async () => result });
+    const response = await h.request();
+    assert.equal(response.status, status);
+    assert.deepEqual(h.notifications, []);
+  }
+});
+
+test('a failed create transaction does not wake delivery', async (t) => {
+  t.mock.method(console, 'error', () => {});
+  const h = await setup({ create: async () => { throw new Error('Transaction rolled back'); } });
+  assert.equal((await h.request()).status, 500);
+  assert.deepEqual(h.notifications, []);
 });

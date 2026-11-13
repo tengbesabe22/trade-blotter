@@ -108,8 +108,10 @@ requests, and manual dispatch. Backend tests use fake repositories/database
 operations; frontend API/component tests mock fetch. Neither needs a running PostgreSQL instance.
 
 Live database concurrency/rollback verification and p50/p95 measurements remain
-pending. Outbox records are stored; SSE connections, heartbeats and session checks
-are implemented. Trade-event dispatch and browser subscriptions remain pending.
+pending. Outbox records are stored; the relayer wakes after committed creates,
+at startup and every second for recovery. SSE connections, heartbeats and session
+checks are implemented; trade-event delivery to SSE and browser subscriptions
+remain pending.
 
 ## Project map
 

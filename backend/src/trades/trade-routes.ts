@@ -9,11 +9,12 @@ export function createTradeRoutes(
   authRepository: AuthRepository,
   tradeRepository: TradeRepository,
   options: AuthOptions,
+  onTradeCreated?: () => void,
 ) {
   const routes = new Hono<AuthEnv>();
 
   routes.route('/', createTradeListingRoutes(authRepository, tradeRepository, options));
-  routes.route('/', createTradeCreationRoutes(authRepository, tradeRepository, options));
+  routes.route('/', createTradeCreationRoutes(authRepository, tradeRepository, options, onTradeCreated));
 
   return routes;
 }

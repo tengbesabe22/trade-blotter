@@ -11,6 +11,7 @@ export function createTradeCreationRoutes(
   authRepository: AuthRepository,
   tradeRepository: TradeRepository,
   options: AuthOptions,
+  onTradeCreated?: () => void,
 ) {
   const routes = new Hono<AuthEnv>();
 
@@ -62,6 +63,9 @@ export function createTradeCreationRoutes(
 
       switch (result.kind) {
         case 'created':
+          // The repository transaction has committed. Wake delivery without awaiting it.
+          onTradeCreated?.();
+          return c.json(result.body, 201);
         case 'replayed':
           return c.json(result.body, 201);
         case 'unknown-instrument':

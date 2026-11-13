@@ -8,9 +8,14 @@ import { createTradeRoutes } from './trades/trade-routes';
 import { createTradeStreamRoutes } from './trades/sse/trade-stream-routes';
 
 export type AppRepositories = { auth: AuthRepository; trades: TradeRepository };
+type AppServices = { onTradeCreated?: () => void };
 
 // Separate app construction from the listening server so requests are testable.
-export function createApp(repositories: AppRepositories, options: AuthOptions) {
+export function createApp(
+  repositories: AppRepositories,
+  options: AuthOptions,
+  services: AppServices = {},
+) {
   const app = new Hono();
 
   app.get('/api/health', (c) => c.json({ status: 'ok' }));
@@ -23,7 +28,12 @@ export function createApp(repositories: AppRepositories, options: AuthOptions) {
 
   app.route('/api/auth', createLoginRoutes(repositories.auth, options));
   app.route('/api/auth', createSessionRoutes(repositories.auth, options));
-  app.route('/api/trades', createTradeRoutes(repositories.auth, repositories.trades, options));
+  app.route('/api/trades', createTradeRoutes(
+    repositories.auth,
+    repositories.trades,
+    options,
+    services.onTradeCreated,
+  ));
   app.route('/api/events', createTradeStreamRoutes(repositories.auth, options));
 
   app.onError((error, c) => {

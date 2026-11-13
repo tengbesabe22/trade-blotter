@@ -49,7 +49,10 @@ The ready payload is defined in
 abort listener when the connection ends. Responses use no-store and disable
 proxy buffering through X-Accel-Buffering.
 
-**Not implemented yet:** trade-event delivery, outbox dispatch or browser subscriptions. Those will be added in separate
+The outbox relayer now runs after committed creates, at startup and every second
+for recovery. The SSE route does not consume broadcaster events yet.
+
+**Not implemented yet:** trade-event delivery or browser subscriptions. Those will be added in separate
 reviewable steps before the stream carries trades. Ready currently confirms only
 that an authenticated connection opened.
 

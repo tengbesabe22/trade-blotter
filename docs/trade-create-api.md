@@ -112,8 +112,9 @@ For a new trade, **trade + full outbox payload + idempotency result commit toget
 A concurrent user/key conflict rolls back the losing transaction, then reads and
 compares the winner's committed result. Unrelated database errors propagate.
 
-Outbox storage is implemented. Dispatch/SSE delivery is planned and will happen
-outside the transaction. Creation reuses the catalog lookup for its response.
+After commit, a new create wakes the relayer without waiting for delivery.
+Startup and 1-second recovery checks find missed wakes and due retries. SSE trade
+delivery remains pending. Creation reuses the catalog lookup for its response.
 
 ## Errors
 
