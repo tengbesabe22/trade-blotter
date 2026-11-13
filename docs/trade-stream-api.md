@@ -115,9 +115,10 @@ terminal connection error switches to manual refresh. Signing out/unmounting clo
 the connection and late messages are ignored. Browsers without EventSource can
 still use manual refresh.
 
-**Known follow-up:** automatic recovery GETs currently use the API's normal activity
-policy and can renew idle time. Background-request classification was explicitly
-deferred to the next review; heartbeat and trade-event checks still never renew it.
+Automatic snapshot/recovery GETs send `X-Session-Activity: background`. The backend
+still authenticates and enforces idle/maximum expiry, but leaves `lastSeenAt`
+unchanged. Deliberate Refresh, pagination and sort changes count as user activity.
+Heartbeat and trade-event checks also never renew idle time.
 
 Amendment/cancellation events, summaries and broader automatic page reconciliation
 are not implemented yet.

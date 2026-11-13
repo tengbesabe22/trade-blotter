@@ -28,12 +28,13 @@ export function TradesPage({ onSessionExpired }: TradesPageProps) {
   const [cursorHistory, setCursorHistory] = useState<(string | null)[]>([null]);
   const request = { ...queryOptions, after: cursorHistory.at(-1) ?? undefined };
   const isFirstPage = cursorHistory.length === 1;
-  const { query, streamStatus } = useLiveTrades(request);
+  const { query, streamStatus, markUserRequest } = useLiveTrades(request);
 
   const trades = query.data?.trades;
   const sessionExpired = query.error instanceof ApiError && query.error.status === 401;
 
   function changeQuery(nextQuery: TradeListQuery) {
+    markUserRequest();
     setQueryOptions(nextQuery);
     // reset to the first page when changing filters or sort order
     setCursorHistory([null]);
@@ -42,16 +43,26 @@ export function TradesPage({ onSessionExpired }: TradesPageProps) {
   function nextPage() {
     const nextCursor = query.data?.pageInfo.nextCursor;
     if (nextCursor && !query.isFetching) {
+      markUserRequest();
       setCursorHistory((history) => [...history, nextCursor]);
     }
   }
 
   function previousPage() {
+    markUserRequest();
     setCursorHistory((history) => history.length > 1 ? history.slice(0, -1) : history);
   }
 
+  function firstPage() {
+    markUserRequest();
+    setCursorHistory([null]);
+  }
+
   function refreshTrades() {
-    if (!query.isFetching) void query.refetch();
+    if (!query.isFetching) {
+      markUserRequest();
+      void query.refetch();
+    }
   }
 
   return (
@@ -141,7 +152,7 @@ export function TradesPage({ onSessionExpired }: TradesPageProps) {
             pageInfo={query.data?.pageInfo}
             isFetching={query.isFetching}
             isFirstPage={isFirstPage}
-            onFirstPage={() => setCursorHistory([null])}
+            onFirstPage={firstPage}
             onPrevious={previousPage}
             onNext={nextPage}
           />

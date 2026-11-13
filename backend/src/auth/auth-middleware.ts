@@ -42,8 +42,11 @@ export function requireSession(
       return c.json({ code: 'UNAUTHENTICATED', message: 'Please log in again.' }, 401);
     }
 
-    // Stream reconnects/background checks can validate without extending idle time.
-    if (behavior.recordActivity !== false) {
+    // This hint only suppresses activity writes; authentication/expiry checks above still apply.
+    const shouldRecordActivity = behavior.recordActivity !== false &&
+      c.req.header('X-Session-Activity') !== 'background';
+
+    if (shouldRecordActivity) {
       const updated = await repository.touchSession(tokenHash, now);
 
       if (!updated) {

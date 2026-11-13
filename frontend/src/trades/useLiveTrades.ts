@@ -22,6 +22,8 @@ export function useLiveTrades(request: TradeListQuery) {
   const buffered = useRef<Trade[]>([]);
   // Counts accepted updates, not duplicate messages, schema versions or trade versions.
   const receivedTradeCount = useRef(0);
+  // Automatic fetches stay passive; a deliberate action marks only the next fetch.
+  const userRequestPending = useRef(false);
   const [streamStatus, setStreamStatus] = useState<StreamStatus>(() =>
     typeof EventSource === 'undefined' ? 'unavailable' : 'connecting');
 
@@ -32,7 +34,9 @@ export function useLiveTrades(request: TradeListQuery) {
     queryFn: async ({ signal }) => {
       // Compare this count after the request to detect updates received while it waited.
       const receivedCountAtStart = receivedTradeCount.current;
-      const page = await tradeApi.list(request, signal);
+      const activity = userRequestPending.current ? 'user' : 'background';
+      userRequestPending.current = false;
+      const page = await tradeApi.list(request, signal, activity);
       if (signal.aborted) return page;
 
       // Merge after the fetch, so an older response cannot erase a received event.
@@ -122,5 +126,9 @@ export function useLiveTrades(request: TradeListQuery) {
     // receiveTrade is an Effect Event and is intentionally excluded from dependencies.
   }, [queryClient]);
 
-  return { query, streamStatus };
+  function markUserRequest() {
+    userRequestPending.current = true;
+  }
+
+  return { query, streamStatus, markUserRequest };
 }

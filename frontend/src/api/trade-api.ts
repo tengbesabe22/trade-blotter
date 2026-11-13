@@ -18,14 +18,21 @@ export const tradeApi = {
     return validation.data.trade;
   },
 
-  list: async (query: TradeListQuery = defaultTradeListQuery, signal?: AbortSignal): Promise<TradeListResponse> => {
+  list: async (
+    query: TradeListQuery = defaultTradeListQuery,
+    signal?: AbortSignal,
+    activity: 'user' | 'background' = 'user',
+  ): Promise<TradeListResponse> => {
     const request = tradeListQuerySchema.parse(query);
     const parameters = new URLSearchParams({
       limit: String(request.limit), sortBy: request.sortBy, sortDirection: request.sortDirection,
     });
     if (request.after) parameters.set('after', request.after);
 
-    const response = await apiRequest(`/trades?${parameters}`, { signal });
+    const response = await apiRequest(`/trades?${parameters}`, {
+      signal,
+      headers: activity === 'background' ? { 'X-Session-Activity': 'background' } : undefined,
+    });
     const body: unknown = await response.json().catch(() => null);
     const validation = tradeListResponseSchema.safeParse(body);
 

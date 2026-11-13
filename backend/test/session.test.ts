@@ -310,3 +310,47 @@ test('a new login cookie works for /me and logout only revokes that login', asyn
   assert.equal((await h.request('/api/auth/me', { headers: { Cookie: cookie } })).status, 401);
   assert.equal((await h.request()).status, 200); // The original independent session remains valid.
 });
+
+test('background trade snapshots validate the session without extending idle expiry', async () => {
+  const h = await setup();
+  const original = h.sessions.get(h.tokenHash)!.lastSeenAt.getTime();
+  const background = { headers: { 'X-Session-Activity': 'background' } };
+
+  h.advance(minute);
+  assert.equal((await h.request('/api/trades', background)).status, 200);
+  h.advance(3 * minute);
+  assert.equal((await h.request('/api/trades', background)).status, 200);
+  assert.equal(h.sessions.get(h.tokenHash)!.lastSeenAt.getTime(), original);
+
+  h.advance(minute);
+  assert.equal((await h.request('/api/trades', background)).status, 401);
+});
+
+test('normal, explicit user and unknown activity headers still renew idle time', async () => {
+  for (const activity of [undefined, 'user', 'unknown']) {
+    const h = await setup();
+    const expiresAt = h.sessions.get(h.tokenHash)!.expiresAt.getTime();
+    h.advance(minute);
+    const headers = new Headers();
+    if (activity) headers.set('X-Session-Activity', activity);
+
+    assert.equal((await h.request('/api/trades', { headers })).status, 200);
+    assert.equal(h.sessions.get(h.tokenHash)!.lastSeenAt.getTime(), h.options.now().getTime());
+    assert.equal(h.sessions.get(h.tokenHash)!.expiresAt.getTime(), expiresAt);
+  }
+});
+
+test('the background hint cannot bypass missing, revoked or expired sessions', async () => {
+  for (const reason of ['missing', 'revoked', 'idle', 'maximum']) {
+    const h = await setup();
+    const headers = new Headers({ 'X-Session-Activity': 'background' });
+    if (reason === 'missing') headers.set('Cookie', '');
+    if (reason === 'revoked') h.sessions.clear();
+    if (reason === 'idle') h.advance(5 * minute);
+    if (reason === 'maximum') {
+      h.advance(8 * hour);
+      h.sessions.get(h.tokenHash)!.lastSeenAt = h.options.now(); // Isolate hard expiry.
+    }
+    assert.equal((await h.request('/api/trades', { headers })).status, 401);
+  }
+});

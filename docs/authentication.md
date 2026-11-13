@@ -56,15 +56,18 @@ or user records in local storage.
 | Setting | Behavior |
 | --- | --- |
 | Maximum duration | 8 hours after login |
-| Idle timeout | 5 minutes without authenticated activity |
+| Idle timeout | 5 minutes without user-initiated authenticated activity |
 | Activity | Renews idle time, never the maximum duration |
 | Cookie | HttpOnly, SameSite=Lax, Path=/api; Secure in production |
 | Token storage | Fresh random token per login; only its SHA-256 hash is stored |
 
 Timing constants are in [session-config.ts](../backend/src/auth/session-config.ts).
 Invalid/expired sessions clear the cookie and require login again.
-Background/stream validation can avoid renewing idle time; stream cleanup will
-be wired when SSE is implemented.
+Requests marked `X-Session-Activity: background` validate the session without
+updating `lastSeenAt`. Automatic trade snapshots/recovery use this hint; deliberate
+refresh/navigation use normal activity. Missing or unrecognised hints retain the
+normal activity behavior. The hint never bypasses authentication or expiry checks.
+SSE connections, heartbeats and event checks also never renew idle time.
 
 ## Validation and permissions
 

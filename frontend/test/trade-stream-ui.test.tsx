@@ -141,6 +141,9 @@ test('reconnection retains rows, labels them stale, and fetches a new snapshot a
   await act(async () => { h.source.emit('stream.ready', ready); });
   await screen.findByText('TSLA');
   assert.equal(snapshots, 2);
+  for (const call of h.fetchMock.mock.calls) {
+    assert.equal(new Headers(call.arguments[1]?.headers).get('X-Session-Activity'), 'background');
+  }
 });
 
 test('invalid event data closes the source and leaves cached trades intact', async (t) => {
@@ -209,4 +212,32 @@ test('a full first page shows the live row without the new-trade notice', async 
   assert.equal(h.page()?.hasNewTrades, true); // Pagination still needs a fresh boundary.
   assert.equal(screen.queryByText(/New trades received/) === null, true);
   assert.equal(screen.getByRole('button', { name: 'Next' }).hasAttribute('disabled'), true);
+});
+
+test('manual refresh, navigation and sort changes remain user-initiated requests', async (t) => {
+  const h = setup(t, async (input) => {
+    const older = new URL(String(input), 'http://localhost').searchParams.has('after');
+    return Response.json(older
+      ? tradePage([cancelledTrade])
+      : tradePage([sampleTrade], { nextCursor: 'older-page' }));
+  });
+  await act(async () => { h.source.emit('stream.ready', ready); });
+  await screen.findByText('AAPL');
+
+  async function expectUserRequest(action: () => void, expectedSymbol: string) {
+    const before = h.fetchMock.mock.callCount();
+    action();
+    await waitFor(() => assert.equal(h.fetchMock.mock.callCount(), before + 1));
+    await screen.findByText(expectedSymbol);
+    const options = h.fetchMock.mock.calls.at(-1)?.arguments[1];
+    assert.equal(new Headers(options?.headers).get('X-Session-Activity'), null);
+    await waitFor(() => assert.equal(screen.getByRole('button', { name: 'Refresh trades' }).hasAttribute('disabled'), false));
+  }
+
+  await expectUserRequest(() => fireEvent.click(screen.getByRole('button', { name: 'Refresh trades' })), 'AAPL');
+  await expectUserRequest(() => fireEvent.click(screen.getByRole('button', { name: 'Next' })), 'MSFT');
+  await expectUserRequest(() => fireEvent.click(screen.getByRole('button', { name: 'Previous' })), 'AAPL');
+  await expectUserRequest(() => fireEvent.click(screen.getByRole('button', { name: 'Next' })), 'MSFT');
+  await expectUserRequest(() => fireEvent.click(screen.getByRole('button', { name: 'First page' })), 'AAPL');
+  await expectUserRequest(() => fireEvent.change(screen.getByLabelText('Sort by'), { target: { value: 'price' } }), 'AAPL');
 });
