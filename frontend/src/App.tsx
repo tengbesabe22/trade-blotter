@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { ApiError } from './api/api-client';
 import { authApi } from './api/auth-api';
 import type { CurrentUser } from './api/auth-contract';
-import { AccountPanel } from './auth/AccountPanel';
+import { TradeWorkspace } from './trades/TradeWorkspace';
 import { LoginForm } from './auth/LoginForm';
 
 type SessionState =
@@ -45,8 +45,8 @@ function App() {
   }
 
   return (
-    <main className="flex min-h-svh items-center justify-center px-5 py-12">
-      <div className="w-full max-w-sm">
+    <main className="flex min-h-svh items-center justify-center px-4 py-6 sm:px-6 sm:py-10">
+      <div className={`w-full ${session.status === 'signed-in' ? 'max-w-7xl' : 'max-w-sm'}`}>
         <header className="mb-7 flex items-center gap-3">
           <span aria-hidden="true" className="flex size-10 items-center justify-center rounded-lg bg-slate-900 text-sm font-bold text-white">
             TB
@@ -57,7 +57,7 @@ function App() {
           </div>
         </header>
 
-        <div className="rounded-2xl border border-slate-200 bg-white p-7 shadow-sm sm:p-8">
+        <div className={session.status === 'signed-in' ? '' : 'rounded-2xl border border-slate-200 bg-white p-7 shadow-sm sm:p-8'}>
           {session.status === 'checking' && (
             <p role="status" className="text-sm text-slate-600">Checking your session…</p>
           )}
@@ -81,7 +81,8 @@ function App() {
           )}
 
           {session.status === 'signed-in' && (
-            <AccountPanel
+            <TradeWorkspace
+              key={session.user.id}
               user={session.user}
               onSignedOut={() => setSession({ status: 'signed-out' })}
             />

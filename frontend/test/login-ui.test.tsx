@@ -23,6 +23,12 @@ after(() => dom.window.close());
 const trader = { id: 'user-1', displayName: 'JSMITH', role: 'TRADER' };
 const credentials = { email: 'jsmith@example.com', password: ' Password with spaces ' };
 
+function withEmptyTrades(implementation: typeof fetch): typeof fetch {
+  return async (url, options) => url === '/api/trades'
+    ? Response.json({ trades: [] })
+    : implementation(url, options);
+}
+
 async function showLogin(t: TestContext, implementation: typeof fetch) {
   const transport: typeof fetch = async (url, options) => {
     if (url === '/api/auth/me') {
@@ -31,7 +37,7 @@ async function showLogin(t: TestContext, implementation: typeof fetch) {
 
     return implementation(url, options);
   };
-  const fetchMock = t.mock.method(globalThis, 'fetch', transport);
+  const fetchMock = t.mock.method(globalThis, 'fetch', withEmptyTrades(transport));
   render(<App />);
   await screen.findByLabelText('Email');
   return fetchMock;
@@ -143,7 +149,7 @@ test('session restoration shows a checking state without flashing the login form
   let resolveSession!: (response: Response) => void;
   const pending = new Promise<Response>((resolve) => { resolveSession = resolve; });
   const fakeFetch: typeof fetch = async () => pending;
-  const fetchMock = t.mock.method(globalThis, 'fetch', fakeFetch);
+  const fetchMock = t.mock.method(globalThis, 'fetch', withEmptyTrades(fakeFetch));
   render(<App />);
 
   assert.match(screen.getByRole('status').textContent ?? '', /Checking your session/);
@@ -157,7 +163,7 @@ test('session restoration shows a checking state without flashing the login form
 
 test('a fresh app mount restores the account again using me', async (t) => {
   const fakeFetch: typeof fetch = async () => Response.json({ user: trader });
-  const fetchMock = t.mock.method(globalThis, 'fetch', fakeFetch);
+  const fetchMock = t.mock.method(globalThis, 'fetch', withEmptyTrades(fakeFetch));
   const first = render(<App />);
   await screen.findByText('JSMITH');
   first.unmount();
@@ -165,15 +171,14 @@ test('a fresh app mount restores the account again using me', async (t) => {
   render(<App />);
   await screen.findByText('JSMITH');
 
-  assert.equal(fetchMock.mock.calls.length, 2);
-  assert.ok(fetchMock.mock.calls.every((call) => call.arguments[0] === '/api/auth/me'));
+  assert.equal(fetchMock.mock.calls.filter((call) => call.arguments[0] === '/api/auth/me').length, 2);
 });
 
 test('an absent or expired session shows the login form without an error', async (t) => {
   const fakeFetch: typeof fetch = async () => Response.json({
     code: 'UNAUTHENTICATED', message: 'Please log in again.',
   }, { status: 401 });
-  const fetchMock = t.mock.method(globalThis, 'fetch', fakeFetch);
+  const fetchMock = t.mock.method(globalThis, 'fetch', withEmptyTrades(fakeFetch));
   render(<App />);
 
   await screen.findByLabelText('Email');
@@ -194,7 +199,7 @@ for (const { name, fail } of failedSessionChecks) {
       attempts += 1;
       return attempts === 1 ? fail() : Response.json({ user: trader });
     };
-    t.mock.method(globalThis, 'fetch', fakeFetch);
+    t.mock.method(globalThis, 'fetch', withEmptyTrades(fakeFetch));
     render(<App />);
 
     await screen.findByRole('alert');
@@ -215,7 +220,7 @@ test('an obsolete Strict Mode session check cannot sign the user back in after l
     sessionChecks += 1;
     return sessionChecks === 1 ? oldCheck : Response.json({ user: trader });
   };
-  const fetchMock = t.mock.method(globalThis, 'fetch', fakeFetch);
+  const fetchMock = t.mock.method(globalThis, 'fetch', withEmptyTrades(fakeFetch));
   render(<StrictMode><App /></StrictMode>);
   await screen.findByText('JSMITH');
   assert.equal(fetchMock.mock.calls[0].arguments[1]?.signal?.aborted, true);

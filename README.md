@@ -5,9 +5,9 @@ A TypeScript application for viewing and recording USD equity trades.
 **Working:** individual login/logout, database sessions, trade listing, and trade
 creation with validation, idempotent retries, and transactional outbox storage.
 
-**Next:** amendment/cancellation, SSE delivery, the trading UI, and deployment.
-The frontend supports login, account display, logout, and session restoration
-on refresh. The trading UI is still pending.
+**Next:** filtering, trade forms, amendment/cancellation, SSE delivery, and deployment.
+The frontend supports login, session restoration, logout, and a read-only trade
+grid with sorting, manual refresh, and loading/empty/error states.
 
 ## Run locally
 
@@ -47,13 +47,13 @@ pnpm dev
 The API runs at `http://localhost:3000`.
 Check `GET /api/health` for `{"status":"ok"}`.
 
-To run the frontend starter in another terminal:
+Start the frontend in another terminal:
 
 ```sh
 pnpm --filter @trade-blotter/frontend dev
 ```
 
-The login page uses the `/api` dev proxy and auth client.
+Sign in with a demo account to view trades. The frontend uses the `/api` dev proxy.
 See the [frontend guide](frontend/README.md) for the component and request flow.
 
 ## Demo accounts
@@ -111,7 +111,7 @@ pending. Outbox records are stored; event dispatch and SSE are not implemented y
 | Location | Contents |
 | --- | --- |
 | `backend/` | Hono API, authentication, trade contracts, and repositories |
-| `frontend/` | React login/account UI, API client, Vite, Tailwind CSS, and Oxlint |
+| `frontend/` | React auth/trade UI, API clients, AG Grid Community, TanStack Query, and Tailwind CSS |
 | `database/` | Prisma schema/client, migrations, and rerun-safe seed |
 | `docs/` | Authentication and trade API guides |
 
