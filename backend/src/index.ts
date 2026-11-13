@@ -38,7 +38,7 @@ const app = createApp(
   { origin, secureCookies },
   {
     broadcaster,
-    onTradeCreated: () => { void relayer.wake(); },
+    onTradeChanged: () => { void relayer.wake(); },
   },
 );
 

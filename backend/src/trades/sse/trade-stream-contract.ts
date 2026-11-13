@@ -9,11 +9,11 @@ export const streamReadySchema = z.strictObject({
 
 export type StreamReady = z.infer<typeof streamReadySchema>;
 
-// Creation-only delivery for now; the complete trade requires no follow-up GET.
+// Creation and amendment events carry the complete trade; no follow-up GET is needed.
 export const tradeChangeSchema = z.strictObject({
   schemaVersion: z.literal(1),
   changeId: z.uuid(),
-  type: z.literal('TRADE_CREATED'),
+  type: z.enum(['TRADE_CREATED', 'TRADE_AMENDED']),
   occurredAt: z.iso.datetime({ precision: 3 }),
   trade: tradeResponseSchema,
 });

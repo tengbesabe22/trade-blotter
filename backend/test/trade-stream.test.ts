@@ -270,7 +270,7 @@ const change: TradeChange = {
 };
 
 for (const role of ['TRADER', 'READ_ONLY'] as const) {
-  test(`SSE immediately sends the complete event to its owner and a different ${role}`, async () => {
+  test(`SSE immediately sends creation and amendment events to their owner and a different ${role}`, async () => {
     const h = await setup();
     const other = { ...user, id: 'd197282d-99ca-4260-833a-702f97d1cba4', displayName: 'ADOE', role };
     const otherToken = 'b'.repeat(43);
@@ -287,14 +287,20 @@ for (const role of ['TRADER', 'READ_ONLY'] as const) {
 
     try {
       // Events arriving during the handshake must stay buffered behind stream.ready.
+      const amendment = { ...change, type: 'TRADE_AMENDED' as const,
+        changeId: 'd197282d-99ca-4260-833a-702f97d1cba5',
+        trade: { ...change.trade, price: '228.5000', version: 2 } };
       h.broadcaster.broadcast(change);
+      h.broadcaster.broadcast(amendment);
       for (const reader of [first, second]) {
         assert.match(new TextDecoder().decode((await reader.read()).value), /event: stream.ready/);
-        const frame = new TextDecoder().decode((await readNext(reader)).value);
-        assert.match(frame, /event: trade.changed/);
-        assert.match(frame, new RegExp(`id: ${change.changeId}`));
-        const data = frame.split('\n').find((line) => line.startsWith('data: '))!.slice(6);
-        assert.deepEqual(tradeChangeSchema.parse(JSON.parse(data)), change);
+        for (const expected of [change, amendment]) {
+          const frame = new TextDecoder().decode((await readNext(reader)).value);
+          assert.match(frame, /event: trade.changed/);
+          assert.match(frame, new RegExp(`id: ${expected.changeId}`));
+          const data = frame.split('\n').find((line) => line.startsWith('data: '))!.slice(6);
+          assert.deepEqual(tradeChangeSchema.parse(JSON.parse(data)), expected);
+        }
       }
       assert.equal(h.auth.sessions.get(tokenHash)?.lastSeenAt.getTime(), startTime);
     } finally {

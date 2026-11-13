@@ -11,6 +11,7 @@ export function createTradeAmendmentRoutes(
   authRepository: AuthRepository,
   tradeRepository: TradeRepository,
   options: AuthOptions,
+  onTradeChanged?: () => void,
 ) {
   const routes = new Hono<AuthEnv>();
 
@@ -49,6 +50,8 @@ export function createTradeAmendmentRoutes(
 
       switch (result.kind) {
         case 'amended':
+          // The transaction has committed; relay delivery runs independently of this response.
+          onTradeChanged?.();
           return c.json(result.body, 200);
         case 'not-found':
           return c.json({ code: 'TRADE_NOT_FOUND', message: 'Trade not found.' }, 404);

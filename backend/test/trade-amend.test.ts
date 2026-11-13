@@ -19,6 +19,7 @@ const amendedTrade: TradeResponse = {
 
 type Options = {
   role?: CurrentUser['role'];
+  onTradeChanged?: () => void;
   amend?: (command: AmendTradeCommand) => Promise<AmendTradeResult>;
 };
 
@@ -28,6 +29,7 @@ async function setup(options: Options = {}) {
   const now = new Date('2026-11-14T09:00:00Z');
   const token = 'a'.repeat(43);
   const commands: AmendTradeCommand[] = [];
+  const notifications: string[] = [];
 
   await auth.repository.createSession({
     userId: user.id,
@@ -45,7 +47,14 @@ async function setup(options: Options = {}) {
       return options.amend ? options.amend(command) : { kind: 'amended', body: { trade: amendedTrade } };
     },
   };
-  const app = createApp({ auth: auth.repository, trades }, { origin, secureCookies: false, now: () => now });
+  const app = createApp(
+    { auth: auth.repository, trades },
+    { origin, secureCookies: false, now: () => now },
+    { onTradeChanged: () => {
+      notifications.push('amended');
+      return options.onTradeChanged?.();
+    } },
+  );
 
   function request(
     body: unknown = requestBody,
@@ -65,7 +74,7 @@ async function setup(options: Options = {}) {
     });
   }
 
-  return { request, commands };
+  return { request, commands, notifications };
 }
 
 async function expectError(response: Response, status: number, code: string) {
@@ -198,4 +207,43 @@ test('amend hides unexpected persistence errors', async (t) => {
   assert.deepEqual(await response.json(), {
     code: 'INTERNAL_ERROR', message: 'An unexpected error occurred.',
   });
+  assert.deepEqual(h.notifications, []);
+});
+
+
+test('amend wakes delivery only after commit and does not wait for delivery', async () => {
+  let commit!: (result: AmendTradeResult) => void;
+  const pending = new Promise<AmendTradeResult>((resolve) => { commit = resolve; });
+  const h = await setup({
+    amend: () => pending,
+    onTradeChanged: () => new Promise<void>(() => {}),
+  });
+  const response = h.request();
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.deepEqual(h.notifications, []);
+
+  commit({ kind: 'amended', body: { trade: amendedTrade } });
+  const completed = await Promise.race([
+    response,
+    new Promise<never>((_, reject) => {
+      setImmediate(() => reject(new Error('The HTTP response must not wait for delivery.')));
+    }),
+  ]);
+  assert.equal(completed.status, 200);
+  assert.deepEqual(h.notifications, ['amended']);
+});
+
+test('rejected and invalid amendments never wake delivery', async () => {
+  const outcomes: [AmendTradeResult, number][] = [
+    [{ kind: 'not-found' }, 404], [{ kind: 'forbidden' }, 403],
+    [{ kind: 'no-changes' }, 400], [{ kind: 'conflict', currentTrade: amendedTrade }, 409],
+  ];
+  for (const [result, status] of outcomes) {
+    const h = await setup({ amend: async () => result });
+    assert.equal((await h.request()).status, status);
+    assert.deepEqual(h.notifications, []);
+  }
+  const invalid = await setup();
+  assert.equal((await invalid.request({})).status, 400);
+  assert.deepEqual(invalid.notifications, []);
 });

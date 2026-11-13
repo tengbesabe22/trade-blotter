@@ -1,7 +1,8 @@
 # Amendments
 
 `PATCH /api/trades/:id` is implemented for signed-in traders amending their own
-ACTIVE trades. Amendment SSE delivery and the frontend form remain pending.
+ACTIVE trades. Successful amendments are delivered through SSE; the frontend form
+remains pending.
 
 ## Editable fields
 
@@ -71,3 +72,14 @@ and effective changes. Its conditional update increments the version once, then
 saves the resulting trade and amendment outbox record in the same transaction.
 A concurrent winner returns a conflict with current state, without silently retrying.
 Amendments never look up a replacement instrument.
+
+
+## Live updates
+
+After the transaction commits, the PATCH route wakes the existing outbox relayer
+without awaiting delivery. Both traders and reviewers receive `trade.changed`
+with `type: TRADE_AMENDED`, the complete trade and its new version. The browser
+accepts this type and reuses the existing version-aware cache merge without an
+extra GET for a visible row. Conflicts, rejections and no-ops produce no event.
+The optional reason remains in the outbox payload and is not included in SSE.
+See the [stream guide](trade-stream-api.md#trade-creation-and-amendment-events).

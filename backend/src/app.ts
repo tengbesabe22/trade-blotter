@@ -10,7 +10,7 @@ import { createTradeBroadcaster, type TradeBroadcaster } from './trades/sse/trad
 
 export type AppRepositories = { auth: AuthRepository; trades: TradeRepository };
 type AppServices = {
-  onTradeCreated?: () => void;
+  onTradeChanged?: () => void;
   broadcaster?: TradeBroadcaster;
 };
 
@@ -37,7 +37,7 @@ export function createApp(
     repositories.auth,
     repositories.trades,
     options,
-    services.onTradeCreated,
+    services.onTradeChanged,
   ));
   app.route('/api/events', createTradeStreamRoutes(repositories.auth, options, broadcaster));
 

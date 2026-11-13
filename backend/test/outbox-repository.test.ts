@@ -6,6 +6,7 @@ import { createOutboxRepository, type PendingTradeEvent } from '../src/trades/ou
 const event: PendingTradeEvent = {
   id: 'd197282d-99ca-4260-833a-702f97d1cba2',
   tradeId: 'f1550000-0000-4000-8000-000000100003',
+  type: 'TRADE_CREATED',
   tradeVersion: 1,
   payload: { symbol: 'AAPL' }, // Persistence returns JSON; the relayer validates it later.
   retries: 0,
@@ -28,14 +29,15 @@ function setup() {
   return { repository: createOutboxRepository(database), reads, writes };
 }
 
-test('listPending requests only due pending creation events in a bounded, deterministic order', async () => {
+test('listPending requests only due pending creation and amendment events in a bounded, deterministic order', async () => {
   const h = setup();
   const now = event.createdAt;
 
   assert.deepEqual(await h.repository.listPending(now, 100), [event]);
   assert.deepEqual(h.reads[0]?.where, {
-    type: 'TRADE_CREATED', status: 'PENDING', nextAttemptAt: { lte: now },
+    type: { in: ['TRADE_CREATED', 'TRADE_AMENDED'] }, status: 'PENDING', nextAttemptAt: { lte: now },
   });
+  assert.equal(h.reads[0]?.select?.type, true);
   assert.equal(h.reads[0]?.take, 100);
   assert.deepEqual(h.reads[0]?.orderBy, [{ nextAttemptAt: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }]);
 });

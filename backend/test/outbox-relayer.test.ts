@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createOutboxRelayer } from '../src/trades/outbox/outbox-relayer';
 import type { OutboxRepository, PendingTradeEvent } from '../src/trades/outbox/outbox-repository';
+import { tradeResponseSchema } from '../src/trades/trade-contract';
 import type { TradeChange } from '../src/trades/sse/trade-stream-contract';
 
 const startTime = Date.parse('2026-11-13T09:00:00.000Z');
@@ -9,7 +10,7 @@ const startTime = Date.parse('2026-11-13T09:00:00.000Z');
 function makeEvent(index = 1): PendingTradeEvent {
   const id = `f1550000-0000-4000-8000-${String(index).padStart(12, '0')}`;
   return {
-    id, tradeId: id, tradeVersion: 1, retries: 0, createdAt: new Date(startTime),
+    id, type: 'TRADE_CREATED', tradeId: id, tradeVersion: 1, retries: 0, createdAt: new Date(startTime),
     payload: {
       id, symbol: 'AAPL', side: 'BUY', quantity: '5000.000000', price: '227.4500',
       trader: 'JSMITH', ownerId: 'd197282d-99ca-4260-833a-702f97d1cba1',
@@ -156,4 +157,42 @@ test('failure to save a retry is reported without discarding the pending event',
   assert.equal(h.errors.length, 1);
   assert.equal(h.pending.size, 1);
   assert.equal(h.published.length, 0);
+});
+
+
+test('relayer sends amendments with the saved version and keeps the reason out of SSE', async () => {
+  const created = makeEvent();
+  const trade = { ...tradeResponseSchema.parse(created.payload), price: '228.5000', version: 2 };
+  const event = { ...created, type: 'TRADE_AMENDED' as const, tradeVersion: 2,
+    payload: { trade, reason: 'Correct price.' } };
+  const h = setup([event]);
+
+  await h.relayer.wake();
+
+  assert.deepEqual(h.delivered, [{
+    schemaVersion: 1, changeId: event.id, type: 'TRADE_AMENDED',
+    occurredAt: event.createdAt.toISOString(), trade,
+  }]);
+  assert.deepEqual(h.published, [event.id]);
+  assert.deepEqual(h.retries, []);
+});
+
+test('invalid amendment payloads and trade identity/version mismatches stay retryable', async () => {
+  const created = makeEvent();
+  const trade = { ...tradeResponseSchema.parse(created.payload), version: 2 };
+  const amendment = { ...created, type: 'TRADE_AMENDED' as const, tradeVersion: 2,
+    payload: { trade, reason: null } };
+  for (const event of [
+    { ...amendment, payload: created.payload },
+    { ...amendment, payload: { trade: { ...trade, price: 228.5 }, reason: null } },
+    { ...amendment, tradeId: makeEvent(3).tradeId },
+    { ...amendment, tradeVersion: 3 },
+  ]) {
+    const h = setup([event]);
+    await h.relayer.wake();
+    assert.deepEqual(h.delivered, []);
+    assert.deepEqual(h.published, []);
+    assert.equal(h.retries[0]?.id, event.id);
+    assert.equal(h.pending.has(event.id), true);
+  }
 });

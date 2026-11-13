@@ -53,7 +53,7 @@ function fingerprint(input: NormalizedCreateTradeRequest): string {
 type SetupOptions = {
   role?: CurrentUser['role'];
   create?: (command: CreateTradeCommand) => Promise<CreateTradeResult>;
-  onTradeCreated?: () => void;
+  onTradeChanged?: () => void;
 };
 
 async function setup(options: SetupOptions = {}) {
@@ -93,9 +93,9 @@ async function setup(options: SetupOptions = {}) {
   const app = createApp(
     { auth: auth.repository, trades },
     { origin, secureCookies: false, now: () => now },
-    { onTradeCreated: () => {
+    { onTradeChanged: () => {
       notifications.push('created');
-      return options.onTradeCreated?.();
+      return options.onTradeChanged?.();
     } },
   );
 
@@ -355,7 +355,7 @@ test('create wakes delivery only after persistence resolves and does not await d
   const pendingCommit = new Promise<CreateTradeResult>((resolve) => { commit = resolve; });
   const h = await setup({
     create: () => pendingCommit,
-    onTradeCreated: () => new Promise<void>(() => {}), // Delivery is still running.
+    onTradeChanged: () => new Promise<void>(() => {}), // Delivery is still running.
   });
 
   const response = h.request();

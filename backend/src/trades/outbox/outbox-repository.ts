@@ -1,7 +1,8 @@
-import type { DatabaseClient } from '@trade-blotter/database';
+import type { DatabaseClient, Prisma } from '@trade-blotter/database';
 
 export type PendingTradeEvent = {
   id: string;
+  type: Prisma.OutboxEventGetPayload<{}>['type'];
   tradeId: string;
   tradeVersion: number;
   payload: unknown;
@@ -20,12 +21,16 @@ export function createOutboxRepository(
 ): OutboxRepository {
   return {
     listPending: (now, limit) => database.outboxEvent.findMany({
-      where: { type: 'TRADE_CREATED', status: 'PENDING', nextAttemptAt: { lte: now } },
+      where: {
+        type: { in: ['TRADE_CREATED', 'TRADE_AMENDED'] },
+        status: 'PENDING',
+        nextAttemptAt: { lte: now },
+      },
       // Earliest eligible time first; creation time and ID make ties deterministic.
       orderBy: [{ nextAttemptAt: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
       take: limit,
       select: {
-        id: true, tradeId: true, tradeVersion: true,
+        id: true, type: true, tradeId: true, tradeVersion: true,
         payload: true, retries: true, createdAt: true,
       },
     }),

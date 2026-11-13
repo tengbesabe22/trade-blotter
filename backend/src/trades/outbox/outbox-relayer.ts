@@ -1,5 +1,10 @@
+import { z } from 'zod';
+import { tradeResponseSchema } from '../trade-contract';
 import type { OutboxRepository } from './outbox-repository';
 import { tradeChangeSchema, type TradeChange } from '../sse/trade-stream-contract';
+
+// Amendment outbox records wrap the trade with a reason; only the trade is public SSE data.
+const amendmentPayloadSchema = z.object({ trade: tradeResponseSchema });
 
 const BATCH_SIZE = 100;
 const RETRY_BASE_DELAY_MS = 1000;
@@ -26,9 +31,12 @@ export function createOutboxRelayer(
 
       for (const event of events) {
         try {
+          const trade = event.type === 'TRADE_AMENDED'
+            ? amendmentPayloadSchema.parse(event.payload).trade
+            : event.payload;
           const change = tradeChangeSchema.parse({
-            schemaVersion: 1, changeId: event.id, type: 'TRADE_CREATED',
-            occurredAt: event.createdAt.toISOString(), trade: event.payload,
+            schemaVersion: 1, changeId: event.id, type: event.type,
+            occurredAt: event.createdAt.toISOString(), trade,
           });
           if (change.trade.id !== event.tradeId || change.trade.version !== event.tradeVersion) {
             throw new Error('Outbox trade identity/version mismatch.');

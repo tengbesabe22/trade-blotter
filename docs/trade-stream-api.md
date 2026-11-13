@@ -50,10 +50,10 @@ The ready payload is defined in
 abort listener when the connection ends. Responses use no-store and disable
 proxy buffering through X-Accel-Buffering.
 
-## Trade creation events
+## Trade creation and amendment events
 
-The outbox relayer runs after committed creates, at startup and every second for
-recovery. It broadcasts through the same instance used by this route. Each
+The outbox relayer runs after committed creates/amendments, at startup and every
+second for recovery. It broadcasts through the same instance used by this route. Each
 connection subscribes before `stream.ready`, then sends queued changes immediately
 without waiting for a heartbeat or fetching trades again.
 
@@ -64,10 +64,17 @@ data: <complete TradeChange JSON>
 
 ```
 
-The JSON contains `schemaVersion: 1`, `changeId`, `type: TRADE_CREATED`, `occurredAt`
-and the complete `trade` DTO. Both account roles receive events for all traders.
-The POST response remains `{trade}`. Duplicate event delivery is possible; the
+The JSON contains `schemaVersion: 1`, `changeId`, `type` (`TRADE_CREATED` or
+`TRADE_AMENDED`), `occurredAt` and the complete `trade` DTO. Both account roles receive events for all traders.
+The POST and PATCH responses remain `{trade}`. Duplicate event delivery is possible; the
 browser must merge by trade ID/version. No Last-Event-ID history replay is provided.
+
+Create and amend routes share the `onTradeChanged` wake-up callback. It runs only
+after a successful repository transaction and does not wait for delivery. Rejected,
+conflicting, no-op and failed amendments do not wake the relayer. Amendment outbox
+payloads contain `{trade, reason}`; SSE sends only the trade, keeping the wire shape
+consistent with creation events. Invalid payloads or identity/version mismatches
+remain pending with the existing retry policy.
 
 Disconnecting removes the subscription. A full 100-event broadcaster buffer also
 closes the connection, even if a write is blocked behind a slow browser. Reconnected
@@ -88,7 +95,11 @@ tradeEvents.addEventListener('trade.changed', (event) => {
 ```
 
 Create a trade in one window. Both consoles should receive the same change/trade
-IDs. Run `tradeEvents.close()` when finished.
+IDs. To test an amendment, use the [PATCH curl example](trade-amend-api.md#http-request-and-responses)
+for a visible trade owned by that trader, with its current version. Both consoles
+should receive `TRADE_AMENDED` with the same trade ID and the incremented version.
+The existing cache merger updates a visible row without another GET.
+Run `tradeEvents.close()` when finished.
 
 ## Browser cache behavior
 
@@ -120,8 +131,9 @@ still authenticates and enforces idle/maximum expiry, but leaves `lastSeenAt`
 unchanged. Deliberate Refresh, pagination and sort changes count as user activity.
 Heartbeat and trade-event checks also never renew idle time.
 
-Amendment/cancellation events, summaries and broader automatic page reconciliation
-are not implemented yet.
+Amendment form controls, cancellation events, summaries and broader automatic page
+reconciliation are not implemented yet. Existing page/filter-membership limitations
+remain unchanged; this slice only enables amendment delivery and browser acceptance.
 
 Tests use fake session persistence, a controlled clock and mocked timers, and
 read/cancel the real Hono response stream.

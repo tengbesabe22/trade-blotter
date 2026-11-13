@@ -241,3 +241,17 @@ test('manual refresh, navigation and sort changes remain user-initiated requests
   await expectUserRequest(() => fireEvent.click(screen.getByRole('button', { name: 'First page' })), 'AAPL');
   await expectUserRequest(() => fireEvent.change(screen.getByLabelText('Sort by'), { target: { value: 'price' } }), 'AAPL');
 });
+
+
+test('amendment events update an existing cached row without another GET or closing the stream', async (t) => {
+  const h = setup(t);
+  await act(async () => { h.source.emit('stream.ready', ready); });
+  await screen.findByText('AAPL');
+  const amended = { ...sampleTrade, price: '228.5000', version: 2 };
+  await act(async () => {
+    h.source.emit('trade.changed', { ...change, type: 'TRADE_AMENDED', trade: amended });
+  });
+  assert.deepEqual(h.page()?.trades, [amended]);
+  assert.equal(h.fetchMock.mock.callCount(), 1);
+  assert.equal(h.source.closed, false);
+});
