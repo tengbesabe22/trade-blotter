@@ -172,7 +172,7 @@ export function createTradeRepository(database: TradeDatabase): TradeRepository 
 
           const instrument = await tx.instrument.findUnique({
             where: { symbol: command.input.symbol },
-            select: { id: true, symbol: true },
+            select: { id: true, symbol: true, currency: true },
           });
 
           if (!instrument) {
@@ -214,7 +214,7 @@ export function createTradeRepository(database: TradeDatabase): TradeRepository 
 
           const contribution = calculateTradeContribution(responseBody.trade);
           // Increment stored totals in the database; concurrent creates must not overwrite them.
-          await tx.symbolSummary.upsert({
+          const savedSummary = await tx.symbolSummary.upsert({
             where: { instrumentId: instrument.id },
             create: { instrumentId: instrument.id, ...contribution, version: 1 },
             update: {
@@ -226,14 +226,17 @@ export function createTradeRepository(database: TradeDatabase): TradeRepository 
             },
           });
 
-          // Save the exact resulting version; delivery happens after commit.
+          // Capture returned totals/version now; a later read could see another trade.
+          const summary = toSymbolSummary({ ...savedSummary, instrument });
+
+          // Save the exact resulting versions; delivery happens after commit.
           await tx.outboxEvent.create({
             data: {
               type: 'TRADE_CREATED',
               actorId: command.userId,
               tradeId: newTrade.id,
               tradeVersion: newTrade.version,
-              payload: responseBody.trade,
+              payload: { trade: responseBody.trade, summaries: [summary] },
             },
           });
 

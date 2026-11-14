@@ -198,3 +198,42 @@ for (const type of ['TRADE_AMENDED', 'TRADE_CANCELLED'] as const) {
     }
   });
 }
+
+
+test('relayer accepts wrapped creation payloads while continuing to send the current trade-only event', async () => {
+  const created = makeEvent();
+  const summary = {
+    instrumentId: '7768fed5-b612-4844-8b84-e9db63a31d05', symbol: 'AAPL', currency: 'USD',
+    buyQuantity: '5100.000000', sellQuantity: '30.000000', netQuantity: '5070.000000',
+    buyValue: '1160250.0000000000', sellValue: '6900.0000000000',
+    version: 9, updatedAt: new Date(startTime).toISOString(),
+  };
+  const payload = { trade: created.payload, summaries: [summary] };
+  const h = setup([{ ...created, payload }]);
+  await h.relayer.wake();
+  assert.deepEqual(h.delivered, [{
+    schemaVersion: 1, changeId: created.id, type: 'TRADE_CREATED',
+    occurredAt: created.createdAt.toISOString(), trade: created.payload,
+  }]);
+  assert.deepEqual(h.published, [created.id]);
+  assert.deepEqual(h.retries, []);
+  assert.deepEqual(payload.summaries, [summary]);
+});
+
+
+test('wrapped creation payloads still validate the trade and outbox identity before publication', async () => {
+  const created = makeEvent();
+  const trade = tradeResponseSchema.parse(created.payload);
+  for (const event of [
+    { ...created, payload: { trade: { ...trade, price: 227.45 }, summaries: [] } },
+    { ...created, tradeId: makeEvent(2).tradeId, payload: { trade, summaries: [] } },
+    { ...created, tradeVersion: 2, payload: { trade, summaries: [] } },
+  ]) {
+    const h = setup([event]);
+    await h.relayer.wake();
+    assert.deepEqual(h.delivered, []);
+    assert.deepEqual(h.published, []);
+    assert.equal(h.retries[0]?.id, event.id);
+    assert.equal(h.pending.has(event.id), true);
+  }
+});

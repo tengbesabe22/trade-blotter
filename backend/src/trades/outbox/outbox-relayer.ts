@@ -3,8 +3,14 @@ import { tradeResponseSchema } from '../trade-contract';
 import type { OutboxRepository } from './outbox-repository';
 import { tradeChangeSchema, type TradeChange } from '../sse/trade-stream-contract';
 
-// Amend/cancel outbox records wrap the trade with a reason; only the trade is public SSE data.
+// Wrapped payloads hold the trade alongside its reason or summary snapshots.
 const tradeUpdatePayloadSchema = z.object({ trade: tradeResponseSchema });
+
+// Accept old raw creations and new wrapped creations. SSE stays trade-only until version 2 is wired.
+const tradeCreationPayloadSchema = z.union([
+  tradeResponseSchema,
+  tradeUpdatePayloadSchema.transform((payload) => payload.trade),
+]);
 
 const BATCH_SIZE = 100;
 const RETRY_BASE_DELAY_MS = 1000;
@@ -32,7 +38,7 @@ export function createOutboxRelayer(
       for (const event of events) {
         try {
           const trade = event.type === 'TRADE_CREATED'
-            ? event.payload
+            ? tradeCreationPayloadSchema.parse(event.payload)
             : tradeUpdatePayloadSchema.parse(event.payload).trade;
           const change = tradeChangeSchema.parse({
             schemaVersion: 1, changeId: event.id, type: event.type,

@@ -168,3 +168,33 @@ user refreshes or changes the query, even after passive reconciliation.
 Tests use fake session persistence, a controlled clock and mocked timers, and
 read/cancel the real Hono response stream.
 No running database is required.
+
+
+## Summary event contract (defined, not yet sent)
+
+tradeChangeWithSummariesSchema defines a version-2 trade.changed payload. It keeps
+changeId/type/occurredAt/trade and adds a required summaries array using the same
+symbolSummarySchema as GET /api/summaries. Entries are absolute resulting totals,
+not deltas. Each summary version belongs to its instrument and is independent of
+the trade version. A receiver will merge each entity by its own identity/version.
+
+A trade's immutable symbol means at most one desk summary can change. Creation and
+cancellation require one matching-symbol snapshot. Amendments may carry an empty
+array for metadata-only changes, which do not revise totals. Economic amendments
+must include the updated summary when the writer is wired; the contract alone cannot
+distinguish them without the previous trade state. Zero/flat summary rows are retained.
+
+The existing tradeChangeSchema/TradeChange remain version 1 and are still used by
+the relayer, broadcaster and browser. Version 2 is a separate schema/type so this
+contract-only slice does not break existing delivery or pending trade-only outbox
+records. Creation now stores {trade, summaries: [snapshot]} in its outbox payload,
+using the summary returned within the transaction. The relayer accepts both wrapped
+creations and old raw trade DTOs; it still broadcasts version-1 trade-only events.
+It reads the trade from the wrapper without forwarding or rewriting the saved
+summary. Amend/cancel snapshot capture and version-2 producer/consumer support remain
+pending. Existing trade-only events must not be assigned present-day totals
+as if they were historical snapshots. Mutation HTTP responses remain {trade}.
+
+Ten new validation tests cover all three event types, independent versions,
+summary cardinality/symbol matching, metadata-only edits, decimal formats and legacy
+compatibility. All 409 backend tests, root typecheck and backend build pass.

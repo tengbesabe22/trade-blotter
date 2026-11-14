@@ -128,11 +128,16 @@ The fingerprint is SHA-256 of JSON with this fixed order:
 ```
 
 The repository checks for a saved response before consulting the catalog.
-For a new trade, **trade + CREATED audit entry + full outbox payload + idempotency
+For a new trade, **trade + CREATED audit entry + symbol summary + full outbox payload + idempotency
 result commit together**. The audit stores the exact returned trade snapshot,
 resulting version, authenticated actor and null reason. PostgreSQL supplies its
 recording timestamp. Audit failures abort the transaction; matching replays return
 before any insert and add no history. Unknown instruments add no audit entry.
+The outbox stores {trade, summaries: [snapshot]}, capturing the summary returned by
+the upsert with its exact totals/version/time. It reuses the catalog lookup for
+symbol/currency and needs no extra summary read. HTTP and saved idempotency responses
+remain {trade}; SSE still sends the version-1 trade-only event during this transition.
+
 A concurrent user/key conflict rolls back the losing transaction, then reads and
 compares the winner's committed result. Unrelated database errors propagate.
 

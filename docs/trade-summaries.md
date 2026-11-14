@@ -3,7 +3,8 @@
 **Implemented:** calculation helper, SymbolSummary model/migration and seeded totals.
 The local database has been reset and reseeded. Create, amend and cancel now update
 summaries transactionally. The read response contract, repository, mapper and GET endpoint are implemented/tested.
-Summary SSE and UI remain planned.
+The version-2 SSE contract is defined/tested, and creation captures its summary in
+the outbox. Summary delivery and UI remain planned.
 
 ## Scope
 
@@ -107,6 +108,11 @@ schema validation, root typecheck and root build passed.
 After inserting the trade and audit entry, creation calculates the new trade's
 contribution and upserts its SymbolSummary before saving the outbox/idempotency rows.
 The same transaction commits all five writes or aborts on failure.
+Creation now keeps the row returned by the scalar-only upsert and maps it with
+symbol/currency from the existing catalog lookup. Its outbox payload is
+{trade, summaries: [snapshot]}. The snapshot holds exact resulting aggregate totals,
+version and updatedAt from that write; it is not just the new trade's contribution.
+No later summary read or nested upsert relation query is added.
 
 - Missing summary: create it with the contribution and version1.
 - Existing summary: increment the four amounts and version atomically.
@@ -122,6 +128,14 @@ Twenty creation repository tests use fake persistence to check transaction order
 upsert create/update arguments, exact decimals, failure propagation and replay paths.
 They do not verify PostgreSQL concurrency or rollback directly. The create-only
 slice passed all357 backend tests, root typecheck and backend build.
+
+The capture slice passes 22 creation repository tests and 14 relayer tests, using
+fake persistence. Coverage includes returned aggregate versions/times, BUY/SELL and
+large exact amounts, invalid snapshots, failure paths, replay paths, and compatibility
+with old/raw and new/wrapped creation payloads. All 413 backend tests, root typecheck
+and backend build pass. These checks do not exercise real PostgreSQL concurrency.
+HTTP/idempotency responses remain {trade}; summary snapshots are stored but not sent
+to browsers yet. The relayer publishes the validated trade-only version-1 event.
 
 ## Amendment and cancellation transactions
 
@@ -216,7 +230,11 @@ ACTIVE trade aggregates. This verification changed no data and is not a CI depen
 
 ## Next slice
 
-Add event summary snapshots and the docked panel. All mutations maintain totals from
+The expanded SSE contract is defined separately from current version-1 delivery; see
+[the event contract](trade-stream-api.md#summary-event-contract-defined-not-yet-sent).
+Creation captures resulting summaries in outbox records. Next do the same for
+amendments/cancellations, wire version-2 event delivery and browser support, then
+add the docked panel. All mutations maintain totals from
 a correct starting state; earlier drift is not repaired automatically. Valuation
 marks and indicative P&L remain later work.
 
