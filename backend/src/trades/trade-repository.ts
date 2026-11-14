@@ -19,6 +19,9 @@ import type { TradeCursorBoundary } from './listing/trade-cursor';
 import { tradeBoundaryFilter, tradeListFilters, tradeListOrder } from './listing/trade-list-query';
 import type { TradeHistoryEntry } from './history/trade-history-contract';
 import { toTradeHistoryEntries } from './history/trade-history-mapper';
+import {
+  calculateTradeContribution, calculateSummaryDelta, hasSummaryChanges, type TradeContribution,
+} from './summaries/trade-summary-calculation';
 
 // The mapper needs the symbol and display name, not complete account records.
 export type TradeRecord = Prisma.TradeGetPayload<{
@@ -81,6 +84,27 @@ function hasTradeChanges(
   // Both sides have fixed-scale decimals and UTC dates, so equality is meaningful.
   return Object.entries(changes).some(([field, value]) =>
     value !== undefined && value !== current[field as keyof typeof changes]);
+}
+
+async function updateSymbolSummary(
+  tx: Prisma.TransactionClient,
+  instrumentId: string,
+  delta: TradeContribution,
+): Promise<void> {
+  // Metadata-only amendments still produce history/events, but no summary revision.
+  if (!hasSummaryChanges(delta)) return;
+
+  // An existing trade must already have a summary; a missing row aborts the transaction.
+  await tx.symbolSummary.update({
+    where: { instrumentId },
+    data: {
+      buyQuantity: { increment: delta.buyQuantity },
+      sellQuantity: { increment: delta.sellQuantity },
+      buyValue: { increment: delta.buyValue },
+      sellValue: { increment: delta.sellValue },
+      version: { increment: 1 },
+    },
+  });
 }
 
 export function createTradeRepository(database: TradeDatabase): TradeRepository {
@@ -169,6 +193,20 @@ export function createTradeRepository(database: TradeDatabase): TradeRepository 
               actorId: command.userId,
               reason: null,
               snapshot: responseBody.trade,
+            },
+          });
+
+          const contribution = calculateTradeContribution(responseBody.trade);
+          // Increment stored totals in the database; concurrent creates must not overwrite them.
+          await tx.symbolSummary.upsert({
+            where: { instrumentId: instrument.id },
+            create: { instrumentId: instrument.id, ...contribution, version: 1 },
+            update: {
+              buyQuantity: { increment: contribution.buyQuantity },
+              sellQuantity: { increment: contribution.sellQuantity },
+              buyValue: { increment: contribution.buyValue },
+              sellValue: { increment: contribution.sellValue },
+              version: { increment: 1 },
             },
           });
 
@@ -266,6 +304,9 @@ export function createTradeRepository(database: TradeDatabase): TradeRepository 
         },
       });
 
+      const summaryDelta = calculateSummaryDelta(currentTrade, amendedTrade);
+      await updateSymbolSummary(tx, latest.instrumentId, summaryDelta);
+
       await tx.outboxEvent.create({
         data: {
           type: 'TRADE_AMENDED',
@@ -311,6 +352,10 @@ export function createTradeRepository(database: TradeDatabase): TradeRepository 
           snapshot: cancelledTrade,
         },
       });
+
+      // Cancellation preserves quantity, price and side; reuse them as its prior ACTIVE contribution.
+      const summaryDelta = calculateSummaryDelta({ ...cancelledTrade, status: 'ACTIVE' }, cancelledTrade);
+      await updateSymbolSummary(tx, cancelled.instrumentId, summaryDelta);
 
       await tx.outboxEvent.create({
         data: {

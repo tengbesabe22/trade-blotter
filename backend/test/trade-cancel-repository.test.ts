@@ -26,7 +26,7 @@ const command = {
 type Options = {
   current?: TradeRecord | null;
   updated?: TradeRecord | null;
-  failAt?: 'update' | 'lookup' | 'audit' | 'outbox';
+  failAt?: 'update' | 'lookup' | 'audit' | 'summary' | 'outbox';
 };
 
 function setup(options: Options = {}) {
@@ -36,6 +36,7 @@ function setup(options: Options = {}) {
   const updates: Prisma.TradeUpdateManyAndReturnArgs[] = [];
   const events: Prisma.OutboxEventUncheckedCreateInput[] = [];
   const audits: Prisma.TradeAuditUncheckedCreateInput[] = [];
+  const summaries: Prisma.SymbolSummaryUpdateArgs[] = [];
   const failure = new Error('Database operation failed.');
   const tx = {
     trade: {
@@ -57,6 +58,11 @@ function setup(options: Options = {}) {
       audits.push(data);
       if (options.failAt === 'audit') throw failure;
     } },
+    symbolSummary: { update: async (input: Prisma.SymbolSummaryUpdateArgs) => {
+      calls.push('summary');
+      summaries.push(input);
+      if (options.failAt === 'summary') throw failure;
+    } },
     outboxEvent: { create: async ({ data }: { data: Prisma.OutboxEventUncheckedCreateInput }) => {
       calls.push('outbox');
       events.push(data);
@@ -77,10 +83,10 @@ function setup(options: Options = {}) {
 
   // Inspect real repository queries, without simulating PostgreSQL locking or rollback.
   const database = fake as unknown as Parameters<typeof createTradeRepository>[0];
-  return { repository: createTradeRepository(database), calls, updates, events, audits, failure };
+  return { repository: createTradeRepository(database), calls, updates, events, audits, summaries, failure };
 }
 
-test('cancel returns the guarded update directly and saves its audit/event without reading the trade again', async () => {
+test('cancel returns the guarded update directly and saves its audit/summary/event without reading the trade again', async () => {
   const h = setup();
   const response = toTradeResponse(cancelled);
   assert.deepEqual(await h.repository.cancel(command), { kind: 'cancelled', body: { trade: response } });
@@ -100,7 +106,7 @@ test('cancel returns the guarded update directly and saves its audit/event witho
     type: 'TRADE_CANCELLED', actorId: trade.userId, tradeId: trade.id, tradeVersion: 4,
     payload: { trade: response, reason: 'Duplicate booking.' },
   }]);
-  assert.deepEqual(h.calls, ['begin', 'update', 'audit', 'outbox', 'commit']);
+  assert.deepEqual(h.calls, ['begin', 'update', 'audit', 'summary', 'outbox', 'commit']);
 });
 
 test('cancel retains null when no reason was supplied', async () => {
@@ -142,6 +148,7 @@ for (const current of [{ ...trade, version: 4 }, cancelled]) {
     assert.equal(h.updates.length, 1);
     assert.deepEqual(h.events, []);
     assert.deepEqual(h.audits, []);
+    assert.deepEqual(h.summaries, []);
   });
 }
 
@@ -152,16 +159,50 @@ test('a trade removed before the conditional update returns not-found without an
   assert.deepEqual(h.audits, []);
 });
 
-for (const failAt of ['update', 'lookup', 'audit', 'outbox'] as const) {
+for (const failAt of ['update', 'lookup', 'audit', 'summary', 'outbox'] as const) {
   test(`${failAt} failure escapes the transaction instead of returning cancellation success`, async () => {
     const h = setup({ failAt, updated: failAt === 'lookup' ? null : cancelled });
     await assert.rejects(h.repository.cancel(command), (error) => error === h.failure);
     const steps = failAt === 'update' ? ['update']
       : failAt === 'lookup' ? ['update', 'read']
-      : failAt === 'audit' ? ['update', 'audit'] : ['update', 'audit', 'outbox'];
+      : failAt === 'audit' ? ['update', 'audit']
+      : failAt === 'summary' ? ['update', 'audit', 'summary'] : ['update', 'audit', 'summary', 'outbox'];
     assert.deepEqual(h.calls, ['begin', ...steps, 'rollback']);
     assert.equal(h.calls.includes('commit'), false);
     if (failAt === 'update' || failAt === 'lookup') assert.deepEqual(h.audits, []);
+    if (failAt === 'update' || failAt === 'lookup' || failAt === 'audit') assert.deepEqual(h.summaries, []);
     if (failAt !== 'outbox') assert.deepEqual(h.events, []);
   });
 }
+
+
+test('cancellation subtracts the full BUY contribution and retains the summary row/version', async () => {
+  const h = setup();
+  await h.repository.cancel(command);
+  assert.deepEqual(JSON.parse(JSON.stringify(h.summaries)), [{
+    where: { instrumentId: trade.instrumentId },
+    data: {
+      buyQuantity: { increment: '-5000' }, sellQuantity: { increment: '0' },
+      buyValue: { increment: '-1137250' }, sellValue: { increment: '0' }, version: { increment: 1 },
+    },
+  }]);
+  assert.equal(h.calls.includes('read'), false);
+});
+
+test('cancelling a SELL removes only sold quantity and value', async () => {
+  const h = setup({ updated: { ...cancelled, side: 'SELL' } });
+  await h.repository.cancel(command);
+  const summary = JSON.parse(JSON.stringify(h.summaries[0]));
+  assert.deepEqual(summary.data, {
+    buyQuantity: { increment: '0' }, sellQuantity: { increment: '-5000' },
+    buyValue: { increment: '0' }, sellValue: { increment: '-1137250' }, version: { increment: 1 },
+  });
+});
+
+test('cancellation preserves every digit when removing a large fractional trade', async () => {
+  const h = setup({ updated: { ...cancelled, quantity: new Prisma.Decimal('999999999.999999'), price: new Prisma.Decimal('999999.9999') } });
+  await h.repository.cancel(command);
+  const summary = JSON.parse(JSON.stringify(h.summaries[0]));
+  assert.equal(summary.data.buyQuantity.increment, '-999999999.999999');
+  assert.equal(summary.data.buyValue.increment, '-999999999899999.0000000001');
+});

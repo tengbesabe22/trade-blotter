@@ -32,9 +32,10 @@ const savedRequest = { requestFingerprint: command.requestFingerprint, responseB
 
 type SavedRequest = { requestFingerprint: string; responseBody: Prisma.JsonValue };
 type KeyLookup = { where: { userId_key: { userId: string; key: string } } };
-type FailurePoint = 'trade' | 'audit' | 'outbox' | 'idempotency';
+type FailurePoint = 'trade' | 'audit' | 'summary' | 'outbox' | 'idempotency';
 
 type FixtureOptions = {
+  createdTrade?: TradeRecord;
   existing?: SavedRequest;
   winner?: SavedRequest;
   unknownInstrument?: boolean;
@@ -59,6 +60,7 @@ function setup(options: FixtureOptions = {}) {
   const writes: {
     trade?: Prisma.TradeUncheckedCreateInput;
     audit?: Prisma.TradeAuditUncheckedCreateInput;
+    summary?: Prisma.SymbolSummaryUpsertArgs;
     outbox?: Prisma.OutboxEventUncheckedCreateInput;
     idempotency?: Prisma.IdempotencyRequestUncheckedCreateInput;
   } = {};
@@ -90,7 +92,7 @@ function setup(options: FixtureOptions = {}) {
       writes.trade = data;
       if (options.failAt === 'trade') throw failure;
 
-      const { instrument, ...createdTrade } = trade;
+      const { instrument, ...createdTrade } = options.createdTrade ?? trade;
       if (include?.instrument) {
         reads.instrument += 1;
         return { ...createdTrade, instrument };
@@ -102,6 +104,11 @@ function setup(options: FixtureOptions = {}) {
       calls.push('tx.audit');
       writes.audit = data;
       if (options.failAt === 'audit') throw failure;
+    } },
+    symbolSummary: { upsert: async (input: Prisma.SymbolSummaryUpsertArgs) => {
+      calls.push('tx.summary');
+      writes.summary = input;
+      if (options.failAt === 'summary') throw failure;
     } },
     outboxEvent: { create: async ({ data }: { data: Prisma.OutboxEventUncheckedCreateInput }) => {
       calls.push('tx.outbox');
@@ -134,12 +141,12 @@ function setup(options: FixtureOptions = {}) {
   return { repository: createTradeRepository(database), calls, lookups, writes, failure, reads };
 }
 
-test('create saves the trade, creation audit, outbox payload and original 201 result in one transaction', async () => {
+test('create saves the trade, audit, symbol summary, outbox and original 201 result in one transaction', async () => {
   const h = setup();
 
   assert.deepEqual(await h.repository.create(command), { kind: 'created', body: responseBody });
   assert.deepEqual(h.calls, [
-    'begin', 'tx.lookup', 'tx.instrument', 'tx.trade', 'tx.audit', 'tx.outbox', 'tx.idempotency', 'commit',
+    'begin', 'tx.lookup', 'tx.instrument', 'tx.trade', 'tx.audit', 'tx.summary', 'tx.outbox', 'tx.idempotency', 'commit',
   ]);
   assert.deepEqual(h.lookups[0], {
     where: { userId_key: { userId: command.userId, key: command.idempotencyKey } },
@@ -200,7 +207,7 @@ test('malformed saved response JSON propagates a validation error', async () => 
   assert.deepEqual(h.calls, ['begin', 'tx.lookup', 'rollback']);
 });
 
-for (const failAt of ['trade', 'audit', 'outbox', 'idempotency'] as const) {
+for (const failAt of ['trade', 'audit', 'summary', 'outbox', 'idempotency'] as const) {
   test(`${failAt} failure escapes the transaction and prevents a successful result`, async () => {
     const h = setup({ failAt });
 
@@ -209,7 +216,8 @@ for (const failAt of ['trade', 'audit', 'outbox', 'idempotency'] as const) {
     assert.equal(h.calls.includes('commit'), false);
     assert.equal(h.calls.includes('outside.lookup'), false);
     if (failAt === 'trade') assert.equal(h.writes.audit, undefined);
-    if (failAt === 'trade' || failAt === 'audit') assert.equal(h.writes.outbox, undefined);
+    if (failAt === 'trade' || failAt === 'audit') assert.equal(h.writes.summary, undefined);
+    if (failAt === 'trade' || failAt === 'audit' || failAt === 'summary') assert.equal(h.writes.outbox, undefined);
     if (failAt !== 'idempotency') assert.equal(h.writes.idempotency, undefined);
   });
 }
@@ -226,6 +234,7 @@ for (const sameFingerprint of [true, false]) {
       : { kind: 'idempotency-conflict' });
     assert.deepEqual(h.calls.slice(-2), ['rollback', 'outside.lookup']);
     assert.equal(h.calls.filter((call) => call === 'tx.audit').length, 1);
+    assert.equal(h.calls.filter((call) => call === 'tx.summary').length, 1);
     assert.equal(h.calls.includes('commit'), false);
     assert.deepEqual(h.lookups[0], h.lookups[1]);
   });
@@ -254,6 +263,62 @@ test('an audit version uniqueness error is not treated as an idempotent replay',
 
   await assert.rejects(h.repository.create(command), (error) => error === failure);
   assert.deepEqual(h.calls, ['begin', 'tx.lookup', 'tx.instrument', 'tx.trade', 'tx.audit', 'rollback']);
+  assert.equal(h.writes.outbox, undefined);
+  assert.equal(h.writes.idempotency, undefined);
+});
+
+
+test('create initializes a missing BUY summary or increments existing totals/version without overwriting them', async () => {
+  const h = setup();
+  await h.repository.create(command);
+  // Decimal JSON is exact; this also verifies the persistence operation uses increments.
+  assert.deepEqual(JSON.parse(JSON.stringify(h.writes.summary)), {
+    where: { instrumentId: trade.instrumentId },
+    create: {
+      instrumentId: trade.instrumentId, buyQuantity: '5000', sellQuantity: '0',
+      buyValue: '1137250', sellValue: '0', version: 1,
+    },
+    update: {
+      buyQuantity: { increment: '5000' }, sellQuantity: { increment: '0' },
+      buyValue: { increment: '1137250' }, sellValue: { increment: '0' },
+      version: { increment: 1 },
+    },
+  });
+});
+
+test('creating a SELL increments only sold quantity/value while preserving buy totals', async () => {
+  const createdTrade = { ...trade, side: 'SELL' as const, quantity: new Prisma.Decimal('2.5'), price: new Prisma.Decimal('10.1') };
+  const input = { ...command.input, side: 'SELL' as const, quantity: '2.500000', price: '10.1000' };
+  const h = setup({ createdTrade });
+  assert.deepEqual(await h.repository.create({ ...command, input }), {
+    kind: 'created', body: { trade: toTradeResponse(createdTrade) },
+  });
+  const summary = JSON.parse(JSON.stringify(h.writes.summary));
+  assert.deepEqual(summary.create, {
+    instrumentId: trade.instrumentId, buyQuantity: '0', sellQuantity: '2.5',
+    buyValue: '0', sellValue: '25.25', version: 1,
+  });
+  assert.deepEqual(summary.update, {
+    buyQuantity: { increment: '0' }, sellQuantity: { increment: '2.5' },
+    buyValue: { increment: '0' }, sellValue: { increment: '25.25' }, version: { increment: 1 },
+  });
+});
+
+test('the summary write retains every digit of a large fractional trade value', async () => {
+  const input = { ...command.input, quantity: '999999999.999999', price: '999999.9999' };
+  const createdTrade = { ...trade, quantity: new Prisma.Decimal(input.quantity), price: new Prisma.Decimal(input.price) };
+  const h = setup({ createdTrade });
+  await h.repository.create({ ...command, input });
+  const summary = JSON.parse(JSON.stringify(h.writes.summary));
+  assert.equal(summary.create.buyValue, '999999999899999.0000000001');
+  assert.equal(summary.update.buyValue.increment, '999999999899999.0000000001');
+});
+
+test('summary uniqueness failures propagate instead of being mistaken for an idempotent replay', async () => {
+  const failure = uniqueConflict('SymbolSummary_instrumentId_key');
+  const h = setup({ failAt: 'summary', failure, winner: savedRequest });
+  await assert.rejects(h.repository.create(command), (error) => error === failure);
+  assert.deepEqual(h.calls, ['begin', 'tx.lookup', 'tx.instrument', 'tx.trade', 'tx.audit', 'tx.summary', 'rollback']);
   assert.equal(h.writes.outbox, undefined);
   assert.equal(h.writes.idempotency, undefined);
 });

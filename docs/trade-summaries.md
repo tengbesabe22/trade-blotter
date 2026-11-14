@@ -1,8 +1,8 @@
 # Trade summaries
 
 **Implemented:** calculation helper, SymbolSummary model/migration and seeded totals.
-The local database has been reset and reseeded. Mutation wiring, API/SSE and UI
-remain planned.
+The local database has been reset and reseeded. Create, amend and cancel now update
+summaries transactionally. Summary API/SSE and UI remain planned.
 
 ## Scope
 
@@ -38,7 +38,8 @@ Prisma Decimal configuration. The model uses wider aggregate precision as below.
 
 Ten tests cover contributions, create/amend/side-change/cancel deltas, metadata-only
 changes and high-precision boundary arithmetic. They need no database. The helper
-is not yet called by mutation repositories, so it changes no existing API behavior.
+is used by creation; amendments/cancellations use the before/after delta helper.
+HTTP response and SSE payload shapes are unchanged.
 
 ## Current desk summary model
 
@@ -97,17 +98,65 @@ counts, reruns, empty catalogues and read/write failures. An isolated PostgreSQL
 check exercised the full migration chain, empty table after schema migration,
 defaults, negative/NaN/version guards, uniqueness, reference restrictions, precision,
 overflow and rollback. These one-off SQL checks are not a database dependency in CI.
-All 643 project tests (11 database, 352 backend, 280 frontend), schema validation,
-root typecheck and root build pass.
+At the migration slice, all 643 project tests (11 database, 352 backend, 280 frontend),
+schema validation, root typecheck and root build passed.
+
+## Creation transaction
+
+After inserting the trade and audit entry, creation calculates the new trade's
+contribution and upserts its SymbolSummary before saving the outbox/idempotency rows.
+The same transaction commits all five writes or aborts on failure.
+
+- Missing summary: create it with the contribution and version1.
+- Existing summary: increment the four amounts and version atomically.
+- BUY affects bought quantity/value; SELL affects sold quantity/value.
+- Replays, key conflicts and unknown instruments do not update summaries.
+- A concurrent idempotency loser rolls back its attempted summary change before
+  reading the winner. Summary errors are not mistaken for idempotency conflicts.
+
+There is no prior summary lookup. The scalar-only unique instrumentId upsert meets
+Prisma's documented PostgreSQL database-upsert criteria; adding nested relation
+reads/writes could change that behavior. updatedAt is handled by Prisma.
+Twenty creation repository tests use fake persistence to check transaction ordering,
+upsert create/update arguments, exact decimals, failure propagation and replay paths.
+They do not verify PostgreSQL concurrency or rollback directly. The create-only
+slice passed all357 backend tests, root typecheck and backend build.
+
+## Amendment and cancellation transactions
+
+Both mutations call a small private updateSymbolSummary helper in the existing
+trade repository, after the audit entry and before the outbox. The helper skips
+zero deltas and atomically increments the four totals and independent version.
+It updates an existing row; missing summaries or invalid resulting totals cause
+an error and abort the whole transaction instead of inventing a partial baseline.
+
+Amendment computes contribution(after) minus contribution(before), reusing the
+trade states already read. Quantity/price/side changes adjust totals; metadata-only
+changes retain trade history/events without changing summary values or version.
+Cancellation changes no economic fields, so its guarded update's returned quantity,
+price and side describe the prior ACTIVE contribution. Compare that ACTIVE state
+with the CANCELLED state and subtract it. No extra trade lookup is added. Keep the
+summary row and increment its version even when its totals reach zero.
+
+Failed ownership/version/status checks, no-ops and losing mutations never adjust
+summaries. Audit, summary or outbox errors abort the transaction. Thirty-seven
+amend/cancel repository tests cover signed quantity/value changes, side flips,
+metadata-only changes, exact large decimals, failure paths and no extra cancellation
+read. Combined with creation, all57 mutation repository cases and all368 backend
+tests pass, with root typecheck/build. These tests use fake persistence, not live
+PostgreSQL concurrency/rollback checks. No schema/data or API/SSE shape change.
 
 ## Next slice
 
-Wire create/amend/cancel summary adjustments into the trade/audit/outbox transactions.
-The initial seeded totals do not update automatically yet, and no summary endpoint
-or UI is enabled. Valuation marks and indicative P&L remain later work. Summary
-updates will push authoritative versioned snapshots through the existing SSE path.
+Add summary reads and event delivery. All mutation paths now maintain totals from
+a correct starting state; pre-existing drift from earlier partial wiring is not
+repaired automatically. Verify current totals before exposing the endpoint/UI.
+Valuation marks and indicative P&L remain later work. Summary updates will push
+authoritative versioned snapshots through the existing SSE path.
 
 References: [Decimal.js independent constructors](https://mikemcl.github.io/decimal.js/#Dclone),
 [IBKR daily trade log](https://www.ibkrguides.com/traderworkstation/trade-log.htm),
 [NYSE session times](https://www.nyse.com/markets/hours-calendars), and
 [IBKR daily versus new-position P&L](https://www.ibkrguides.com/traderworkstation/profit-and-loss.htm).
+
+[Prisma 7 database upsert criteria](https://www.prisma.io/docs/orm/v7/reference/prisma-client-reference#database-upsert-query-criteria).

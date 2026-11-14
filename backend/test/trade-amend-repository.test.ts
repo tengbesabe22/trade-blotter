@@ -32,7 +32,7 @@ type Options = {
   current?: TradeRecord | null;
   afterUpdate?: TradeRecord | null;
   count?: number;
-  failAt?: 'update' | 'audit' | 'outbox';
+  failAt?: 'update' | 'audit' | 'summary' | 'outbox';
 };
 
 function setup(options: Options = {}) {
@@ -42,6 +42,7 @@ function setup(options: Options = {}) {
   const updates: Prisma.TradeUpdateManyArgs[] = [];
   const events: Prisma.OutboxEventUncheckedCreateInput[] = [];
   const audits: Prisma.TradeAuditUncheckedCreateInput[] = [];
+  const summaries: Prisma.SymbolSummaryUpdateArgs[] = [];
   const failure = new Error('Database write failed.');
   let attemptedUpdate = false;
 
@@ -65,6 +66,11 @@ function setup(options: Options = {}) {
       audits.push(data);
       if (options.failAt === 'audit') throw failure;
     } },
+    symbolSummary: { update: async (input: Prisma.SymbolSummaryUpdateArgs) => {
+      calls.push('summary');
+      summaries.push(input);
+      if (options.failAt === 'summary') throw failure;
+    } },
     outboxEvent: { create: async ({ data }: { data: Prisma.OutboxEventUncheckedCreateInput }) => {
       calls.push('outbox');
       events.push(data);
@@ -85,10 +91,10 @@ function setup(options: Options = {}) {
 
   // The fake inspects persistence calls; it does not simulate PostgreSQL locks or rollback.
   const database = fake as unknown as Parameters<typeof createTradeRepository>[0];
-  return { repository: createTradeRepository(database), calls, updates, events, audits, failure };
+  return { repository: createTradeRepository(database), calls, updates, events, audits, summaries, failure };
 }
 
-test('amend atomically guards owner/status/version and saves the resulting audit and event in the transaction', async () => {
+test('amend atomically guards owner/status/version and saves the audit, summary adjustment and event in the transaction', async () => {
   const h = setup();
   const response = toTradeResponse(updated);
 
@@ -105,7 +111,7 @@ test('amend atomically guards owner/status/version and saves the resulting audit
     type: 'TRADE_AMENDED', actorId: trade.userId, tradeId: trade.id, tradeVersion: 4,
     payload: { trade: response, reason: 'Correct price.' },
   }]);
-  assert.deepEqual(h.calls, ['begin', 'read', 'update', 'read', 'audit', 'outbox', 'commit']);
+  assert.deepEqual(h.calls, ['begin', 'read', 'update', 'read', 'audit', 'summary', 'outbox', 'commit']);
 });
 
 test('a missing trade returns not-found without writes', async () => {
@@ -164,6 +170,7 @@ for (const afterUpdate of [{ ...trade, version: 4 }, { ...trade, version: 4, sta
     assert.equal(h.updates.length, 1);
     assert.deepEqual(h.events, []);
     assert.deepEqual(h.audits, []);
+    assert.deepEqual(h.summaries, []);
   });
 }
 
@@ -174,13 +181,74 @@ test('a record removed before the guarded update returns not-found without an ev
   assert.deepEqual(h.audits, []);
 });
 
-for (const failAt of ['update', 'audit', 'outbox'] as const) {
+for (const failAt of ['update', 'audit', 'summary', 'outbox'] as const) {
   test(`${failAt} errors escape the transaction instead of returning amendment success`, async () => {
     const h = setup({ failAt });
     await assert.rejects(h.repository.amend(command), (error) => error === h.failure);
     assert.equal(h.calls.at(-1), 'rollback');
     assert.equal(h.calls.includes('commit'), false);
     if (failAt === 'update') assert.deepEqual(h.audits, []);
+    if (failAt === 'update' || failAt === 'audit') assert.deepEqual(h.summaries, []);
     if (failAt !== 'outbox') assert.deepEqual(h.events, []);
   });
 }
+
+
+test('a price amendment applies only the value difference and increments the summary version once', async () => {
+  const h = setup();
+  await h.repository.amend(command);
+  assert.deepEqual(JSON.parse(JSON.stringify(h.summaries)), [{
+    where: { instrumentId: trade.instrumentId },
+    data: {
+      buyQuantity: { increment: '0' }, sellQuantity: { increment: '0' },
+      buyValue: { increment: '5250' }, sellValue: { increment: '0' }, version: { increment: 1 },
+    },
+  }]);
+});
+
+for (const [quantity, quantityDelta, valueDelta] of [
+  ['5002.5', '2.5', '568.625'], ['4999', '-1', '-227.45'],
+]) {
+  test(`amending quantity to ${quantity} adds its signed difference to the summary`, async () => {
+    const afterUpdate = { ...trade, quantity: new Prisma.Decimal(quantity), version: 4 };
+    const h = setup({ afterUpdate });
+    await h.repository.amend({ ...command, input: amendTradeRequestSchema.parse({ expectedVersion: 3, changes: { quantity } }) });
+    const summary = JSON.parse(JSON.stringify(h.summaries[0]));
+    assert.deepEqual(summary.data, {
+      buyQuantity: { increment: quantityDelta }, sellQuantity: { increment: '0' },
+      buyValue: { increment: valueDelta }, sellValue: { increment: '0' }, version: { increment: 1 },
+    });
+  });
+}
+
+test('changing side removes the old BUY amounts and adds SELL amounts in one summary update', async () => {
+  const h = setup({ afterUpdate: { ...trade, side: 'SELL', version: 4 } });
+  await h.repository.amend({ ...command, input: amendTradeRequestSchema.parse({ expectedVersion: 3, changes: { side: 'SELL' } }) });
+  assert.deepEqual(JSON.parse(JSON.stringify(h.summaries)), [{
+    where: { instrumentId: trade.instrumentId },
+    data: {
+      buyQuantity: { increment: '-5000' }, sellQuantity: { increment: '5000' },
+      buyValue: { increment: '-1137250' }, sellValue: { increment: '1137250' }, version: { increment: 1 },
+    },
+  }]);
+});
+
+test('metadata-only amendments retain audit/event writes without updating summary totals or version', async () => {
+  const afterUpdate = { ...trade, book: null, counterparty: 'New Bank', tradeDate: new Date('2026-11-15T09:00:00Z'), version: 4 };
+  const h = setup({ afterUpdate });
+  const input = amendTradeRequestSchema.parse({ expectedVersion: 3, changes: {
+    book: null, counterparty: 'New Bank', tradeDate: afterUpdate.tradeDate.toISOString(),
+  } });
+  assert.equal((await h.repository.amend({ ...command, input })).kind, 'amended');
+  assert.deepEqual(h.summaries, []);
+  assert.deepEqual(h.calls, ['begin', 'read', 'update', 'read', 'audit', 'outbox', 'commit']);
+});
+
+test('a small amendment to a large trade retains the exact decimal difference in the summary write', async () => {
+  const current = { ...trade, quantity: new Prisma.Decimal('999999999.999999'), price: new Prisma.Decimal('999999.9999') };
+  const afterUpdate = { ...current, price: new Prisma.Decimal('1000000'), version: 4 };
+  const h = setup({ current, afterUpdate });
+  await h.repository.amend({ ...command, input: amendTradeRequestSchema.parse({ expectedVersion: 3, changes: { price: '1000000' } }) });
+  const summary = JSON.parse(JSON.stringify(h.summaries[0]));
+  assert.equal(summary.data.buyValue.increment, '99999.9999999999');
+});
