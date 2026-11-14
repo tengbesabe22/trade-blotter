@@ -234,13 +234,23 @@ export function createTradeRepository(database: TradeDatabase): TradeRepository 
       if (!latest) throw new Error('Updated trade could not be loaded.');
 
       const amendedTrade = toTradeResponse(latest);
+      await tx.tradeAudit.create({
+        data: {
+          tradeId,
+          tradeVersion: latest.version,
+          action: 'AMENDED',
+          actorId: userId,
+          reason: input.reason,
+          snapshot: amendedTrade,
+        },
+      });
+
       await tx.outboxEvent.create({
         data: {
           type: 'TRADE_AMENDED',
           actorId: userId,
           tradeId,
           tradeVersion: latest.version,
-          // Retain the reason until permanent audit storage is added separately.
           payload: { trade: amendedTrade, reason: input.reason },
         },
       });
@@ -270,13 +280,23 @@ export function createTradeRepository(database: TradeDatabase): TradeRepository 
       }
 
       const cancelledTrade = toTradeResponse(cancelled);
+      await tx.tradeAudit.create({
+        data: {
+          tradeId,
+          tradeVersion: cancelled.version,
+          action: 'CANCELLED',
+          actorId: userId,
+          reason: input.reason,
+          snapshot: cancelledTrade,
+        },
+      });
+
       await tx.outboxEvent.create({
         data: {
           type: 'TRADE_CANCELLED',
           actorId: userId,
           tradeId,
           tradeVersion: cancelled.version,
-          // Delivery outbox metadata; permanent audit history remains separate work.
           payload: { trade: cancelledTrade, reason: input.reason },
         },
       });

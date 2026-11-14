@@ -1,8 +1,8 @@
 # Trade history storage
 
 **Implemented:** Prisma model, append-only SQL migration and seeded histories.
-Creation audit writes are implemented. Amendment/cancellation audit writes and the
-history API/UI are next.
+Create, amend and cancel now write audit entries transactionally. The history
+API/UI are next.
 
 ## Stored entry
 
@@ -55,8 +55,8 @@ only newly inserted trades and entries. Seeded data emits no outbox events.
 The local demo database was reset, all three migrations applied, and the seed run.
 Read-back checks found 500 trades and 649 entries (500 CREATED, 78 AMENDED,
 71 CANCELLED), with complete version chains and final snapshots matching all trades.
-New API creations now append their CREATED entry transactionally. Existing seeded
-histories remain intact. Amendment/cancellation audit writes are next.
+New API creations, amendments and cancellations append their corresponding entries
+transactionally. Existing seeded histories remain intact.
 
 Create saves its returned trade snapshot, CREATED action, version, authenticated
 actor and null reason inside the existing trade/outbox/idempotency transaction.
@@ -65,9 +65,12 @@ Audit errors abort the transaction; concurrent idempotency losers roll back thei
 attempted history before reading the winner. Audit uniqueness errors are not
 mistaken for idempotent replays. The response and SSE payload remain unchanged.
 
-Amend/cancel transaction integration remains pending. Conflicts, no-ops, rejected
-requests and drafts must add no successful-change history. Outbox delivery remains
-independent of retained audit storage.
+Amend/cancel save AMENDED/CANCELLED with the resulting DTO, actor, resulting version
+and normalized optional reason before their outbox insert in the same transaction.
+No extra reads are added; cancellation still uses the guarded update's returned row.
+An audit error aborts the transaction. Conflicts, no-ops, missing/forbidden trades,
+repeated cancellation and drafts add no successful-change history. Responses and
+SSE payloads are unchanged; outbox delivery is independent of retained audit storage.
 
 ## Verification
 
@@ -79,8 +82,9 @@ SQL checks, not a live-database dependency in CI. Prisma validation and client/t
 checks verify the model. Six database-independent unit tests cover fixture histories,
 final-state agreement, new-ID selection, reruns and write-failure propagation. They
 run through root `pnpm test` and CI; root typecheck includes seed/test TypeScript.
-Creation repository tests also use fake persistence to verify the full audit
-snapshot, transactional error propagation, replay behavior and concurrent-key
-handling. This slice added no live-database test dependency.
+Repository tests for create/amend/cancel also use fake persistence to verify full
+audit snapshots, actor/reason/version fields, transactional error propagation and
+no history for rejected/conflicting/no-op operations. They verify repository calls,
+not PostgreSQL rollback. No live-database test dependency was added.
 
 Reference: [PostgreSQL statement-level triggers](https://www.postgresql.org/docs/18/sql-createtrigger.html).

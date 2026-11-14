@@ -32,7 +32,7 @@ type Options = {
   current?: TradeRecord | null;
   afterUpdate?: TradeRecord | null;
   count?: number;
-  failAt?: 'update' | 'outbox';
+  failAt?: 'update' | 'audit' | 'outbox';
 };
 
 function setup(options: Options = {}) {
@@ -41,6 +41,7 @@ function setup(options: Options = {}) {
   const calls: string[] = [];
   const updates: Prisma.TradeUpdateManyArgs[] = [];
   const events: Prisma.OutboxEventUncheckedCreateInput[] = [];
+  const audits: Prisma.TradeAuditUncheckedCreateInput[] = [];
   const failure = new Error('Database write failed.');
   let attemptedUpdate = false;
 
@@ -59,6 +60,11 @@ function setup(options: Options = {}) {
         return { count: options.count ?? 1 };
       },
     },
+    tradeAudit: { create: async ({ data }: { data: Prisma.TradeAuditUncheckedCreateInput }) => {
+      calls.push('audit');
+      audits.push(data);
+      if (options.failAt === 'audit') throw failure;
+    } },
     outboxEvent: { create: async ({ data }: { data: Prisma.OutboxEventUncheckedCreateInput }) => {
       calls.push('outbox');
       events.push(data);
@@ -79,10 +85,10 @@ function setup(options: Options = {}) {
 
   // The fake inspects persistence calls; it does not simulate PostgreSQL locks or rollback.
   const database = fake as unknown as Parameters<typeof createTradeRepository>[0];
-  return { repository: createTradeRepository(database), calls, updates, events, failure };
+  return { repository: createTradeRepository(database), calls, updates, events, audits, failure };
 }
 
-test('amend atomically guards owner/status/version and saves the resulting trade event in the transaction', async () => {
+test('amend atomically guards owner/status/version and saves the resulting audit and event in the transaction', async () => {
   const h = setup();
   const response = toTradeResponse(updated);
 
@@ -91,11 +97,15 @@ test('amend atomically guards owner/status/version and saves the resulting trade
     where: { id: trade.id, userId: trade.userId, status: 'ACTIVE', version: 3 },
     data: { price: '228.5000', book: null, version: { increment: 1 } },
   });
+  assert.deepEqual(h.audits, [{
+    tradeId: trade.id, tradeVersion: 4, action: 'AMENDED', actorId: command.userId,
+    reason: 'Correct price.', snapshot: response,
+  }]);
   assert.deepEqual(h.events, [{
     type: 'TRADE_AMENDED', actorId: trade.userId, tradeId: trade.id, tradeVersion: 4,
     payload: { trade: response, reason: 'Correct price.' },
   }]);
-  assert.deepEqual(h.calls, ['begin', 'read', 'update', 'read', 'outbox', 'commit']);
+  assert.deepEqual(h.calls, ['begin', 'read', 'update', 'read', 'audit', 'outbox', 'commit']);
 });
 
 test('a missing trade returns not-found without writes', async () => {
@@ -138,6 +148,7 @@ test('amend updates editable fields and converts execution time without changing
     },
   });
   await h.repository.amend({ ...command, input });
+  assert.equal(h.audits[0]?.reason, null);
   assert.deepEqual(h.updates[0]?.data, {
     side: 'SELL', quantity: '125.500000',
     tradeDate: new Date('2026-11-14T09:15:23Z'), version: { increment: 1 },
@@ -152,6 +163,7 @@ for (const afterUpdate of [{ ...trade, version: 4 }, { ...trade, version: 4, sta
     });
     assert.equal(h.updates.length, 1);
     assert.deepEqual(h.events, []);
+    assert.deepEqual(h.audits, []);
   });
 }
 
@@ -159,14 +171,16 @@ test('a record removed before the guarded update returns not-found without an ev
   const h = setup({ count: 0, afterUpdate: null });
   assert.deepEqual(await h.repository.amend(command), { kind: 'not-found' });
   assert.deepEqual(h.events, []);
+  assert.deepEqual(h.audits, []);
 });
 
-for (const failAt of ['update', 'outbox'] as const) {
+for (const failAt of ['update', 'audit', 'outbox'] as const) {
   test(`${failAt} errors escape the transaction instead of returning amendment success`, async () => {
     const h = setup({ failAt });
     await assert.rejects(h.repository.amend(command), (error) => error === h.failure);
     assert.equal(h.calls.at(-1), 'rollback');
     assert.equal(h.calls.includes('commit'), false);
-    if (failAt === 'update') assert.deepEqual(h.events, []);
+    if (failAt === 'update') assert.deepEqual(h.audits, []);
+    if (failAt !== 'outbox') assert.deepEqual(h.events, []);
   });
 }

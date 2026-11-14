@@ -56,8 +56,8 @@ Seeding creates 10 instruments, 4 accounts, 500 synthetic trades and 649 synthet
 audit entries with coherent creation/amendment/cancellation histories. Trade and
 history inserts share one transaction. Rerunning preserves existing records,
 passwords, trade changes and audit history, reporting only newly inserted rows.
-Creation audit writes are implemented; amendment/cancellation audit writes and
-the history API/UI remain separate work; see the
+Create, amend and cancel now append audit snapshots transactionally; the history
+API/UI remain separate work; see the
 [history storage guide](docs/trade-history.md).
 
 ### 3. Start the API

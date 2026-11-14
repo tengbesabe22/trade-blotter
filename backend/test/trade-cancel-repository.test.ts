@@ -26,7 +26,7 @@ const command = {
 type Options = {
   current?: TradeRecord | null;
   updated?: TradeRecord | null;
-  failAt?: 'update' | 'lookup' | 'outbox';
+  failAt?: 'update' | 'lookup' | 'audit' | 'outbox';
 };
 
 function setup(options: Options = {}) {
@@ -35,6 +35,7 @@ function setup(options: Options = {}) {
   const calls: string[] = [];
   const updates: Prisma.TradeUpdateManyAndReturnArgs[] = [];
   const events: Prisma.OutboxEventUncheckedCreateInput[] = [];
+  const audits: Prisma.TradeAuditUncheckedCreateInput[] = [];
   const failure = new Error('Database operation failed.');
   const tx = {
     trade: {
@@ -51,6 +52,11 @@ function setup(options: Options = {}) {
         return updated ? [updated] : [];
       },
     },
+    tradeAudit: { create: async ({ data }: { data: Prisma.TradeAuditUncheckedCreateInput }) => {
+      calls.push('audit');
+      audits.push(data);
+      if (options.failAt === 'audit') throw failure;
+    } },
     outboxEvent: { create: async ({ data }: { data: Prisma.OutboxEventUncheckedCreateInput }) => {
       calls.push('outbox');
       events.push(data);
@@ -71,10 +77,10 @@ function setup(options: Options = {}) {
 
   // Inspect real repository queries, without simulating PostgreSQL locking or rollback.
   const database = fake as unknown as Parameters<typeof createTradeRepository>[0];
-  return { repository: createTradeRepository(database), calls, updates, events, failure };
+  return { repository: createTradeRepository(database), calls, updates, events, audits, failure };
 }
 
-test('cancel returns the guarded update directly and saves its event without reading the trade again', async () => {
+test('cancel returns the guarded update directly and saves its audit/event without reading the trade again', async () => {
   const h = setup();
   const response = toTradeResponse(cancelled);
   assert.deepEqual(await h.repository.cancel(command), { kind: 'cancelled', body: { trade: response } });
@@ -86,16 +92,21 @@ test('cancel returns the guarded update directly and saves its event without rea
       user: { select: { displayName: true } },
     },
   }]);
+  assert.deepEqual(h.audits, [{
+    tradeId: trade.id, tradeVersion: 4, action: 'CANCELLED', actorId: command.userId,
+    reason: 'Duplicate booking.', snapshot: response,
+  }]);
   assert.deepEqual(h.events, [{
     type: 'TRADE_CANCELLED', actorId: trade.userId, tradeId: trade.id, tradeVersion: 4,
     payload: { trade: response, reason: 'Duplicate booking.' },
   }]);
-  assert.deepEqual(h.calls, ['begin', 'update', 'outbox', 'commit']);
+  assert.deepEqual(h.calls, ['begin', 'update', 'audit', 'outbox', 'commit']);
 });
 
 test('cancel retains null when no reason was supplied', async () => {
   const h = setup();
   await h.repository.cancel({ ...command, input: cancelTradeRequestSchema.parse({ expectedVersion: 3 }) });
+  assert.equal(h.audits[0]?.reason, null);
   assert.deepEqual(h.events[0]?.payload, { trade: toTradeResponse(cancelled), reason: null });
 });
 
@@ -130,6 +141,7 @@ for (const current of [{ ...trade, version: 4 }, cancelled]) {
     });
     assert.equal(h.updates.length, 1);
     assert.deepEqual(h.events, []);
+    assert.deepEqual(h.audits, []);
   });
 }
 
@@ -137,15 +149,19 @@ test('a trade removed before the conditional update returns not-found without an
   const h = setup({ updated: null, current: null });
   assert.deepEqual(await h.repository.cancel(command), { kind: 'not-found' });
   assert.deepEqual(h.events, []);
+  assert.deepEqual(h.audits, []);
 });
 
-for (const failAt of ['update', 'lookup', 'outbox'] as const) {
+for (const failAt of ['update', 'lookup', 'audit', 'outbox'] as const) {
   test(`${failAt} failure escapes the transaction instead of returning cancellation success`, async () => {
     const h = setup({ failAt, updated: failAt === 'lookup' ? null : cancelled });
     await assert.rejects(h.repository.cancel(command), (error) => error === h.failure);
-    const steps = failAt === 'update' ? ['update'] : ['update', failAt === 'lookup' ? 'read' : 'outbox'];
+    const steps = failAt === 'update' ? ['update']
+      : failAt === 'lookup' ? ['update', 'read']
+      : failAt === 'audit' ? ['update', 'audit'] : ['update', 'audit', 'outbox'];
     assert.deepEqual(h.calls, ['begin', ...steps, 'rollback']);
     assert.equal(h.calls.includes('commit'), false);
+    if (failAt === 'update' || failAt === 'lookup') assert.deepEqual(h.audits, []);
     if (failAt !== 'outbox') assert.deepEqual(h.events, []);
   });
 }

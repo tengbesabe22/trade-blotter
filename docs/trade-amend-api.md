@@ -44,8 +44,7 @@ Validation and normalization follow the [creation rules](trade-create-api.md#req
 ```
 
 `expectedVersion` is a required positive integer. The optional reason is trimmed,
-limited to 500 characters, and saved in the outbox payload. Permanent audit history
-remains planned.
+limited to 500 characters, and saved with the AMENDED audit entry and outbox payload.
 
 ## HTTP request and responses
 
@@ -105,7 +104,10 @@ that every market uses the same rules. See [ORF specification, section 3.4](http
 
 The shared `TradeRepository.amend` checks ownership, ACTIVE status, expected version
 and effective changes. Its conditional update increments the version once, then
-saves the resulting trade and amendment outbox record in the same transaction.
+saves its full resulting DTO as an AMENDED audit snapshot, including the authenticated
+actor, resulting version and optional reason, followed by the outbox record in the
+same transaction. PostgreSQL supplies recordedAt. Audit/outbox failures abort the
+transaction; no-ops and rejected or lost concurrent updates add neither record.
 A concurrent winner returns a conflict with current state, without silently retrying.
 Amendments never look up a replacement instrument.
 

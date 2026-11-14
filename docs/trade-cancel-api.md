@@ -69,14 +69,18 @@ Conflicts keep their details in `ApiError.responseBody` as `unknown`. Validate w
 ## Persistence and delivery
 
 The repository conditionally updates owner + ACTIVE + expectedVersion and returns
-the changed row. Only a failed match needs a diagnostic read. Cancellation and its
-outbox event commit in one transaction; the optional reason stays in the outbox.
+the changed row. Only a failed match needs a diagnostic read. The trade update,
+CANCELLED audit snapshot and outbox event commit in one transaction. The audit
+contains the complete resulting DTO, actor, new version and optional reason;
+PostgreSQL supplies recordedAt. No extra trade read is needed for auditing.
+Audit/outbox errors abort the transaction; conflicts/rejections add no entry.
+The optional reason also stays in the existing outbox payload.
 
 After success, the route invokes `onTradeChanged` without waiting for delivery.
 The relayer selects pending cancellation events and sends `trade.changed` with
 `type: TRADE_CANCELLED` and the complete resulting trade. The reason is not sent
 through SSE. Rejections and failures do not wake delivery.
-Permanent audit history and live summaries remain separate work.
+Audit writes are implemented; the history API/UI and live summaries remain separate work.
 
 
 ## Live browser behavior
