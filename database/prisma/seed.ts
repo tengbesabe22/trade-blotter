@@ -3,6 +3,7 @@ import { randomBytes, scrypt } from 'node:crypto';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient, Prisma, Role } from '../generated/prisma/client.ts';
 import { createSeedTradeFixtures, insertSeedTradeFixtures } from './seed-trades.ts';
+import { insertSeedSymbolSummaries } from './seed-symbol-summaries.ts';
 
 // Synthetic local fixtures, not live prices or actual transactions.
 const catalog = [
@@ -84,11 +85,13 @@ async function seed(prisma: PrismaClient): Promise<void> {
 
     const fixtures = createSeedTradeFixtures(instruments, traders);
     // Synthetic history needs no outbox delivery, sessions or idempotency records.
-    return insertSeedTradeFixtures(tx, fixtures);
+    const addedTrades = await insertSeedTradeFixtures(tx, fixtures);
+    const summaries = await insertSeedSymbolSummaries(tx);
+    return { ...addedTrades, summaries };
   });
 
   console.log(
-    `Seed complete: 10 instruments and 4 demo accounts ready; ${added.trades} trades and ${added.auditEntries} audit entries added.`,
+    `Seed complete: 10 instruments and 4 demo accounts ready; ${added.trades} trades and ${added.auditEntries} audit entries, and ${added.summaries} symbol summaries added.`,
   );
 }
 

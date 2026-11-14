@@ -8,12 +8,27 @@ datasource db {
 }
 
 model Instrument {
-  id        String   @id @default(uuid()) @db.Uuid
-  symbol    String   @unique @db.VarChar(12)
-  name      String   @db.VarChar(120)
-  currency  String   @default("USD") @db.VarChar(3)
-  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  id        String         @id @default(uuid()) @db.Uuid
+  symbol    String         @unique @db.VarChar(12)
+  name      String         @db.VarChar(120)
+  currency  String         @default("USD") @db.VarChar(3)
+  createdAt DateTime       @default(now()) @db.Timestamptz(3)
   trades    Trade[]
+  summary   SymbolSummary?
+}
+
+/// Current desk totals across all traders/books. SQL checks enforce nonnegative totals/version.
+model SymbolSummary {
+  id           String     @id @default(uuid()) @db.Uuid
+  instrumentId String     @unique @db.Uuid
+  instrument   Instrument @relation(fields: [instrumentId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  buyQuantity  Decimal    @default(0) @db.Decimal(28, 6)
+  sellQuantity Decimal    @default(0) @db.Decimal(28, 6)
+  buyValue     Decimal    @default(0) @db.Decimal(38, 10)
+  sellValue    Decimal    @default(0) @db.Decimal(38, 10)
+  version      Int        @default(0)
+  /// Raw SQL updates must also explicitly set updatedAt.
+  updatedAt    DateTime   @default(now()) @updatedAt @db.Timestamptz(3)
 }
 
 model User {
