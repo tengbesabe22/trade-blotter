@@ -8,7 +8,7 @@ Trade reads support bounded cursor pages, server sorting, and filtering.
 Traders can amend their own ACTIVE trades through an inline form, with ownership
 and version checks, immediate cache updates and SSE delivery.
 
-**Next:** broader live-page reconciliation, filter controls, cancellation, and deployment.
+**Next:** broader live-page reconciliation, filter controls, cancellation UI/live delivery, and deployment.
 The frontend supports login, session restoration, logout, and a read-only trade
 grid with server sorting, Previous/Next pagination, manual refresh, and loading/empty/error states.
 Traders can create trades through a validated form; successful submissions refresh the current page.
@@ -77,7 +77,8 @@ All four accounts use the local demo password **`LocalDemo!2026`**.
 
 Both roles can list all trades. Only traders can create trades; ownership comes
 from the session. Traders can amend only their own ACTIVE trades with the expected
-version. Cancellation remains planned.
+version. Traders can also cancel owned ACTIVE trades through the API; cancellation
+UI and live delivery remain pending.
 All seeded trades and prices are fictional.
 
 ## API guide
@@ -94,7 +95,7 @@ All seeded trades and prices are fictional.
 
 Start with [authentication and curl examples](docs/authentication.md), then
 [listing trades](docs/trade-list-api.md), [creating a trade](docs/trade-create-api.md),
-[amendment rules and implementation status](docs/trade-amend-api.md),
+[amending trades](docs/trade-amend-api.md), [cancelling trades](docs/trade-cancel-api.md),
 and the [SSE connection](docs/trade-stream-api.md).
 
 ## Checks and build
