@@ -8,15 +8,31 @@ type TradeListControlsProps = {
 const selectClass = 'mt-1 min-h-11 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700';
 
 export function TradeListControls({ query, onChange }: TradeListControlsProps) {
-  function update(changes: Partial<Pick<TradeListQuery, 'limit' | 'sortBy' | 'sortDirection'>>) {
+  function update(changes: Partial<Pick<TradeListQuery, 'limit' | 'sortBy' | 'sortDirection' | 'status' | 'side'>>) {
     // Changing the result order or size always starts from the first page.
-    onChange({ limit: query.limit, sortBy: query.sortBy, sortDirection: query.sortDirection, ...changes });
+    onChange({ ...query, ...changes, after: undefined });
   }
 
   return (
     <section aria-labelledby="trade-controls-title" className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
       <h2 id="trade-controls-title" className="text-lg font-semibold text-slate-950">Sort and filter</h2>
       <div className="mt-4 grid gap-4">
+        <div className="grid grid-cols-2 gap-3">
+          <label className="flex min-w-0 flex-col text-sm font-medium text-slate-700">
+            Status
+            <select className={selectClass} value={query.status ?? ''}
+              onChange={(event) => update({ status: (event.target.value || undefined) as TradeListQuery['status'] })}>
+              <option value="">All</option><option value="ACTIVE">Active</option><option value="CANCELLED">Cancelled</option>
+            </select>
+          </label>
+          <label className="flex min-w-0 flex-col text-sm font-medium text-slate-700">
+            Side
+            <select className={selectClass} value={query.side ?? ''}
+              onChange={(event) => update({ side: (event.target.value || undefined) as TradeListQuery['side'] })}>
+              <option value="">All</option><option value="BUY">Buy</option><option value="SELL">Sell</option>
+            </select>
+          </label>
+        </div>
         <label className="flex flex-col text-sm font-medium text-slate-700">
           Sort by
           <select

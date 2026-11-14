@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test, { type TestContext } from 'node:test';
 import { ApiError } from '../src/api/api-client';
+import { defaultTradeListQuery } from '../src/api/trade-contract';
 import { tradeApi } from '../src/api/trade-api';
 import { sampleTrade, cancelledTrade, tradePage } from './trade-fixtures';
 
@@ -97,3 +98,20 @@ test('background trade reads send the activity hint while retaining session cred
   assert.equal(new Headers(options?.headers).get('X-Session-Activity'), 'background');
   assert.equal(options?.credentials, 'same-origin');
 });
+
+
+test('listing sends the selected Status and Side as server query parameters', async (t) => {
+  const mock = stubResponse(t, Response.json(tradePage()));
+  await tradeApi.list({ ...defaultTradeListQuery, status: 'ACTIVE', side: 'SELL' });
+  const url = new URL(String(mock.mock.calls[0].arguments[0]), 'http://localhost');
+  assert.deepEqual(url.searchParams.getAll('status'), ['ACTIVE']);
+  assert.deepEqual(url.searchParams.getAll('side'), ['SELL']);
+});
+
+for (const field of ['status', 'side'] as const) {
+  test(`an unsupported ${field} filter is rejected before fetch`, async (t) => {
+    const mock = stubResponse(t, Response.json(tradePage()));
+    await assert.rejects(tradeApi.list({ ...defaultTradeListQuery, [field]: 'UNKNOWN' } as never));
+    assert.equal(mock.mock.callCount(), 0);
+  });
+}

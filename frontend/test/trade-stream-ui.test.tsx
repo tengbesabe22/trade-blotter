@@ -42,7 +42,7 @@ class FakeEventSource extends dom.window.EventTarget {
   close() { this.closed = true; this.readyState = FakeEventSource.CLOSED; }
 }
 Object.defineProperty(globalThis, 'EventSource', { configurable: true, value: FakeEventSource });
-const { render, screen, fireEvent, act, cleanup, waitFor } = await import('@testing-library/react');
+const { render, screen, fireEvent, act, cleanup, waitFor, within } = await import('@testing-library/react');
 afterEach(() => { cleanup(); FakeEventSource.sources = []; });
 after(() => dom.window.close());
 
@@ -301,4 +301,93 @@ test('cancellation SSE retains the row, blocks its open amendment and ignores ol
   assert.deepEqual(h.page()?.trades, [cancelled]);
   assert.equal(h.fetchMock.mock.callCount(), 1);
   assert.equal(h.source.closed, false);
+});
+
+
+async function selectStatus(value: string) {
+  const controls = within(screen.getByRole('region', { name: 'Sort and filter' }));
+  fireEvent.change(controls.getByLabelText('Status'), { target: { value } });
+  await waitFor(() => assert.equal(screen.getByRole('button', { name: 'Refresh trades' }).hasAttribute('disabled'), false));
+}
+
+test('filtered SSE ignores unrelated trades and inserts matching trades without another GET', async (t) => {
+  const h = setup(t, async () => Response.json(tradePage([])));
+  await act(async () => { h.source.emit('stream.ready', ready); });
+  await screen.findByText('No trades yet');
+  await selectStatus('ACTIVE');
+  await screen.findByText('No matching trades');
+  await act(async () => { h.source.emit('trade.changed', { ...change, type: 'TRADE_CANCELLED', trade: { ...newer, status: 'CANCELLED', version: 2 } }); });
+  assert.deepEqual(h.page()?.trades, []);
+  await act(async () => { h.source.emit('trade.changed', { ...change, trade: { ...sampleTrade, id: cancelledTrade.id } }); });
+  await screen.findByText('AAPL');
+  assert.equal(h.fetchMock.mock.callCount(), 2);
+  assert.equal(FakeEventSource.sources.length, 1);
+});
+
+test('filter exits remove rows immediately and coalesce a passive bounded refill protected by newer events', async (t) => {
+  let activeReads = 0;
+  let finish!: (response: Response) => void;
+  const pending = new Promise<Response>((resolve) => { finish = resolve; });
+  const h = setup(t, async (input) => {
+    if (new URL(String(input), 'http://localhost').searchParams.has('status') && ++activeReads === 2) return pending;
+    return Response.json(tradePage([sampleTrade, newer], { nextCursor: 'next' }));
+  });
+  await act(async () => { h.source.emit('stream.ready', ready); });
+  await screen.findByText('AAPL');
+  await selectStatus('ACTIVE');
+  const cancellation = { ...change, type: 'TRADE_CANCELLED', trade: { ...sampleTrade, version: 2, status: 'CANCELLED' } };
+  await act(async () => {
+    h.source.emit('trade.changed', cancellation);
+    h.source.emit('trade.changed', cancellation);
+    h.source.emit('trade.changed', { ...cancellation, trade: { ...newer, version: 2, status: 'CANCELLED' } });
+  });
+  assert.deepEqual(h.page()?.trades, []);
+  assert.equal(screen.getByRole('button', { name: 'Next' }).hasAttribute('disabled'), true);
+  await waitFor(() => assert.equal(activeReads, 2));
+  const replacement = { ...cancelledTrade, status: 'ACTIVE' as const, version: 1 };
+  await act(async () => {
+    h.source.emit('trade.changed', { ...change, type: 'TRADE_AMENDED', trade: { ...replacement, price: '450.0000', version: 2 } });
+    finish(Response.json(tradePage([replacement])));
+  });
+  await waitFor(() => assert.equal(h.page()?.trades[0]?.price, '450.0000'));
+  assert.equal(h.page()?.trades.length, 1);
+  assert.equal(h.fetchMock.mock.callCount(), 3);
+  const [url, options] = h.fetchMock.mock.calls[2]!.arguments;
+  assert.equal(new URL(String(url), 'http://localhost').searchParams.get('limit'), '100');
+  assert.equal(new Headers(options?.headers).get('X-Session-Activity'), 'background');
+});
+
+test('a failed refill preserves event-applied rows and waits for manual retry', async (t) => {
+  let activeReads = 0;
+  const h = setup(t, async (input) => {
+    const filtered = new URL(String(input), 'http://localhost').searchParams.has('status');
+    if (filtered && ++activeReads === 2) return Response.json({ code: 'INTERNAL_ERROR', message: 'Failed.' }, { status: 500 });
+    return Response.json(tradePage(filtered && activeReads > 1 ? [newer] : [sampleTrade, newer]));
+  });
+  await act(async () => { h.source.emit('stream.ready', ready); });
+  await screen.findByText('AAPL');
+  await selectStatus('ACTIVE');
+  await act(async () => { h.source.emit('trade.changed', { ...change, type: 'TRADE_CANCELLED', trade: { ...sampleTrade, version: 2, status: 'CANCELLED' } }); });
+  await screen.findByText(/Unable to refresh trades/);
+  assert.deepEqual(h.page()?.trades.map((trade) => trade.symbol), ['TSLA']);
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  assert.equal(activeReads, 2);
+  fireEvent.click(screen.getByRole('button', { name: 'Refresh trades' }));
+  await waitFor(() => assert.equal(activeReads, 3));
+  await waitFor(() => assert.equal(screen.queryByRole('alert') === null, true));
+});
+
+test('changing filters cancels a queued refill for the old selection', async (t) => {
+  const cancelled = { ...sampleTrade, status: 'CANCELLED' as const, version: 2 };
+  const h = setup(t, async (input) => Response.json(tradePage(
+    new URL(String(input), 'http://localhost').searchParams.get('status') === 'CANCELLED' ? [cancelled] : [sampleTrade],
+  )));
+  await act(async () => { h.source.emit('stream.ready', ready); });
+  await screen.findByText('AAPL');
+  await selectStatus('ACTIVE');
+  await act(async () => { h.source.emit('trade.changed', { ...change, type: 'TRADE_CANCELLED', trade: cancelled }); });
+  await selectStatus('CANCELLED');
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  assert.equal(h.fetchMock.mock.callCount(), 3);
+  assert.equal(h.page()?.trades[0]?.status, 'CANCELLED');
 });

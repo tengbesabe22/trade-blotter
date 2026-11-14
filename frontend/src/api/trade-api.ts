@@ -80,6 +80,8 @@ export const tradeApi = {
       limit: String(request.limit), sortBy: request.sortBy, sortDirection: request.sortDirection,
     });
     if (request.after) parameters.set('after', request.after);
+    if (request.status) parameters.set('status', request.status);
+    if (request.side) parameters.set('side', request.side);
 
     const response = await apiRequest(`/trades?${parameters}`, {
       signal,

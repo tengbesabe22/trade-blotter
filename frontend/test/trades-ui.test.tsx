@@ -388,3 +388,37 @@ for (const direction of ['Next', 'Previous'] as const) {
     assert.equal(horizontal.scrollLeft, 120);
   });
 }
+
+
+test('Status and Side filter all server results, reset pagination and survive sorting/page-size changes', async (t) => {
+  const urls: URL[] = [];
+  showTrades(t, async (input) => {
+    const url = new URL(String(input), 'http://localhost');
+    urls.push(url);
+    return Response.json(tradePage(url.searchParams.has('status') ? [] : [
+      { ...sampleTrade, side: url.searchParams.get('side') === 'SELL' ? 'SELL' : 'BUY' },
+    ], { nextCursor: 'next' }));
+  });
+  await screen.findByText('AAPL');
+  const controls = within(screen.getByRole('region', { name: 'Sort and filter' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+  await waitFor(() => assert.equal(urls.at(-1)?.searchParams.get('after'), 'next'));
+  fireEvent.change(controls.getByLabelText('Status'), { target: { value: 'ACTIVE' } });
+  await screen.findByText('No matching trades');
+  assert.equal(urls.at(-1)?.searchParams.has('after'), false);
+  assert.equal(screen.getByRole('button', { name: 'Previous' }).hasAttribute('disabled'), true);
+  fireEvent.change(controls.getByLabelText('Side'), { target: { value: 'SELL' } });
+  await waitFor(() => assert.equal(urls.at(-1)?.searchParams.get('side'), 'SELL'));
+  fireEvent.change(controls.getByLabelText('Sort by'), { target: { value: 'price' } });
+  await waitFor(() => assert.equal(urls.at(-1)?.searchParams.get('sortBy'), 'price'));
+  fireEvent.change(controls.getByLabelText('Rows per page'), { target: { value: '25' } });
+  await waitFor(() => assert.equal(urls.at(-1)?.searchParams.get('limit'), '25'));
+  assert.equal(urls.at(-1)?.searchParams.get('status'), 'ACTIVE');
+  assert.equal(urls.at(-1)?.searchParams.get('side'), 'SELL');
+  fireEvent.change(controls.getByLabelText('Status'), { target: { value: '' } });
+  await screen.findByText('AAPL');
+  assert.equal(urls.at(-1)?.searchParams.has('status'), false);
+  assert.equal(urls.at(-1)?.searchParams.get('side'), 'SELL');
+  fireEvent.change(controls.getByLabelText('Side'), { target: { value: '' } });
+  await waitFor(() => assert.equal(urls.at(-1)?.searchParams.has('side'), false));
+});

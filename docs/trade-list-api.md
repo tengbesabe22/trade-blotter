@@ -82,12 +82,23 @@ trade DTOs, mapping and repository remain in the parent directory.
 ## Frontend and verification
 
 The UI provides server sort controls, 25/50/100/200 rows per page, Previous/Next,
-First page, and refresh. Filter form controls remain pending; API filters work now.
+First page, refresh, and Status/Side filters. Each filter offers All or one exact
+selection; combined selections use AND across the full server dataset. Changing a
+filter returns to page one; sorting/page-size changes preserve both filters. Other
+filter controls remain pending; the API supports the table above.
 AG Grid renders the returned page without locally reordering it. TanStack Query
 keys include the active request and cancel obsolete fetches; inactive pages are released.
 During Next/Previous loading, the previous rows stay visible so the grid remains
 mounted and page height stays stable. AG Grid preserves scroll when rows change;
-navigation stays disabled until the requested page supplies its own cursor.
+navigation stays disabled until the requested page supplies its own cursor. Filter
+changes show loading instead of retaining rows from a different selection. Empty
+filtered results say No matching trades.
+
+SSE uses the same Status/Side rules: resolve versions, filter, then limit. A visible
+row leaving the selection is removed immediately and invalidates the page cursor.
+Nearby exits batch for 100 ms before one current-page background read. It uses the
+selected limit (maximum 200), merges newer buffered events, and does not renew idle
+time. Failures retain event-applied rows and offer manual Refresh.
 
 Repository tests use fake database operations. A separate local HTTP smoke check
 verified all six sorts in both directions, replayed page requests for Previous, filtering,

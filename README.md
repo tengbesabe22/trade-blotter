@@ -8,10 +8,12 @@ Trade reads support bounded cursor pages, server sorting, and filtering.
 Traders can amend or cancel their own ACTIVE trades through inline panels, with
 ownership/version checks, immediate cache updates and SSE delivery.
 
-**Next:** broader live-page reconciliation, filter controls, and deployment.
+**Next:** remaining filter controls, broader live-page reconciliation, and deployment.
 The frontend supports login, session restoration, logout, and a read-only trade
 grid with server sorting, Previous/Next pagination, manual refresh, and loading/empty/error states.
-The desktop workspace places sorting controls and the default Create trade form
+Status and Side filters run on the server and also apply to incoming live events.
+A row leaving the selection disappears immediately; a batched page fetch fills the gap.
+The desktop workspace places sorting/filter controls and the default Create trade form
 to the right of the grid. Amend/Cancel temporarily replace creation in that panel,
 preserving its draft. Pending or unconfirmed creation blocks switching actions.
 Successful creation refreshes the current page.

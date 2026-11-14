@@ -122,8 +122,15 @@ ordinary incoming events. The create form's existing success refresh is unchange
 The hook retains up to 200 newest received trades while HTTP requests are pending,
 then merges them into responses so a late snapshot cannot erase streamed changes.
 A live change that invalidates a full page cursor clears it; Refresh obtains a new
-cursor. The first page still suppresses the new-trade notice. Automatic bounded
+cursor. The first page still suppresses the new-trade notice. Broader automatic
 reconciliation and popup notifications are deferred.
+
+Status and Side filters apply to HTTP pages and SSE payloads. Versions are resolved
+before filtering/limiting, so stale events cannot restore an excluded row. A visible
+row leaving the selection disappears immediately and schedules a page-sized refill
+after a 100 ms batch window. The read is passive and merges newer buffered events.
+Nearby exits share the fetch; a failure retains live rows and waits for manual
+Refresh. Changing filters cancels a queued refill for the old selection.
 
 Connection errors retain rows with stale/reconnecting feedback. Invalid data or a
 terminal connection error switches to manual refresh. Signing out/unmounting closes
@@ -138,7 +145,9 @@ Heartbeat and trade-event checks also never renew idle time.
 The inline amendment form and cancellation panel supply successful mutation
 responses to the same version guard and buffer. It does not wait for SSE or refetch after saving; duplicate
 SSE delivery is harmless and older in-flight snapshots cannot undo the change.
-Summaries and broader automatic page reconciliation remain pending; existing page/filter-membership limitations are unchanged.
+Summaries and broader ordering/membership reconciliation remain pending. Automatic
+refill currently covers Status/Side exits; other pages/sorts still use the existing
+unseen-trade notice for matching arrivals.
 
 Tests use fake session persistence, a controlled clock and mocked timers, and
 read/cancel the real Hono response stream.

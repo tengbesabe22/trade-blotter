@@ -40,6 +40,11 @@ export function TradesPage({ user, onSessionExpired, tradePanel, createSubmissio
   const [cursorHistory, setCursorHistory] = useState<(string | null)[]>([null]);
   const request = { ...queryOptions, after: cursorHistory.at(-1) ?? undefined };
   const isFirstPage = cursorHistory.length === 1;
+  const hasFilters = Boolean(queryOptions.status || queryOptions.side);
+  const emptyTitle = hasFilters ? 'No matching trades' : 'No trades yet';
+  const emptyDescription = hasFilters
+    ? 'Try changing the Status or Side filters.'
+    : 'Trades will appear here after they are recorded. Use Refresh trades to check again.';
   const { query, streamStatus, markUserRequest } = useLiveTrades(request, savedTrade);
 
   const trades = query.data?.trades;
@@ -158,10 +163,10 @@ export function TradesPage({ user, onSessionExpired, tradePanel, createSubmissio
 
             {trades && trades.length === 0 && (
               <div className="px-6 py-12 text-center">
-                <h2 className="font-semibold text-slate-900">{isFirstPage ? 'No trades yet' : 'No trades on this page'}</h2>
+                <h2 className="font-semibold text-slate-900">{isFirstPage ? emptyTitle : 'No trades on this page'}</h2>
                 <p className="mt-2 text-sm text-slate-600">
                   {isFirstPage
-                    ? 'Trades will appear here after they are recorded. Use Refresh trades to check again.'
+                    ? emptyDescription
                     : 'Trades may have moved since this page was loaded. Return to the first page to continue.'}
                 </p>
               </div>

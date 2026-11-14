@@ -1,9 +1,11 @@
 import { useEffect, useEffectEvent, useRef, useState } from 'react';
-import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { tradeApi } from '../api/trade-api';
 import type { Trade, TradeListQuery } from '../api/trade-contract';
 import { streamReadySchema, tradeChangeSchema } from '../api/trade-stream-contract';
 import { isLiveFirstPage, mergeLiveTradePage, mergeNewestTrades, type LiveTradePage } from './trade-merge';
+
+const FILTER_REFILL_DELAY_MS = 100;
 
 export type StreamStatus = 'connecting' | 'connected' | 'reconnecting' | 'unavailable';
 
@@ -30,7 +32,11 @@ export function useLiveTrades(request: TradeListQuery, savedTrade: Trade | null 
   const query = useQuery<LiveTradePage>({
     queryKey,
     // Keep the grid mounted while changing pages so its height and scroll stay stable.
-    placeholderData: keepPreviousData,
+    placeholderData: (previous, previousQuery) => {
+      const previousRequest = previousQuery?.queryKey[1] as TradeListQuery | undefined;
+      // Keep paging smooth, but do not show rows from a different filter selection.
+      return previousRequest?.status === request.status && previousRequest?.side === request.side ? previous : undefined;
+    },
     // Wait for ready, or allow HTTP-only fallback when streaming is unavailable.
     enabled: streamStatus === 'connected' || streamStatus === 'unavailable',
     queryFn: async ({ signal }) => {
@@ -54,6 +60,17 @@ export function useLiveTrades(request: TradeListQuery, savedTrade: Trade | null 
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
   });
+
+  const { refetch, isFetching, isError } = query;
+  const needsRefill = query.data?.needsRefill === true;
+  useEffect(() => {
+    if (!needsRefill || isFetching || isError) return;
+    if (streamStatus !== 'connected' && streamStatus !== 'unavailable') return;
+    // The event already removed the row. Batch nearby exits into one passive,
+    // page-sized read; failures keep the live rows and use the manual Refresh action.
+    const timer = setTimeout(() => { void refetch(); }, FILTER_REFILL_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [needsRefill, isFetching, isError, refetch, streamStatus]);
 
   // Effect Events see the latest request/queryKey from render. The listener can
   // target the current page without reopening the SSE connection after navigation.

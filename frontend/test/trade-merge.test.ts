@@ -86,3 +86,61 @@ test('visible rows on another sort retain the highest incoming version', () => {
   });
   assert.deepEqual(result.trades, [updated]);
 });
+
+
+for (const query of [
+  { ...defaultTradeListQuery, status: 'ACTIVE' as const },
+  { ...defaultTradeListQuery, side: 'BUY' as const },
+]) {
+  test(`live ${query.status ? 'Status' : 'Side'} filtering ignores unrelated events without invalidating the cursor`, () => {
+    const unrelated = { ...newer, status: 'CANCELLED' as const, side: 'SELL' as const };
+    const result = mergeLiveTradePage(tradePage([sampleTrade], { nextCursor: 'keep' }), [unrelated], query);
+    assert.deepEqual(result.trades, [sampleTrade]);
+    assert.equal(result.pageInfo.nextCursor, 'keep');
+    assert.equal(result.hasNewTrades, false);
+  });
+}
+
+test('filtering happens before the live page limit so unrelated rows cannot displace matching trades', () => {
+  const result = mergeLiveTradePage(tradePage([sampleTrade], { limit: 1, nextCursor: 'keep' }), [
+    { ...newer, status: 'CANCELLED' },
+  ], { ...defaultTradeListQuery, limit: 1, status: 'ACTIVE' });
+  assert.deepEqual(result.trades, [sampleTrade]);
+  assert.equal(result.pageInfo.nextCursor, 'keep');
+});
+
+for (const after of [undefined, 'older-page']) {
+  test(`a higher version leaving the filter is removed and requests refill on ${after ? 'older' : 'first'} pages`, () => {
+    const result = mergeLiveTradePage(tradePage([sampleTrade], { nextCursor: 'old' }), [
+      { ...sampleTrade, status: 'CANCELLED', version: 3 },
+      { ...sampleTrade, version: 2 },
+    ], { ...defaultTradeListQuery, status: 'ACTIVE', after });
+    assert.deepEqual(result.trades, []);
+    assert.equal(result.needsRefill, true);
+    assert.equal(result.pageInfo.nextCursor, null);
+    const stale = mergeLiveTradePage(tradePage([sampleTrade]), [
+      { ...sampleTrade, status: 'CANCELLED', version: 1 },
+    ], { ...defaultTradeListQuery, status: 'ACTIVE', after });
+    assert.deepEqual(stale.trades, [sampleTrade]);
+    assert.equal(stale.needsRefill, false);
+  });
+}
+
+test('matching filters combine with AND, while older pages ignore unrelated unseen rows', () => {
+  const query = { ...defaultTradeListQuery, status: 'ACTIVE' as const, side: 'SELL' as const };
+  const matching = { ...newer, side: 'SELL' as const };
+  const result = mergeLiveTradePage(tradePage([]), [sampleTrade, matching], query);
+  assert.deepEqual(result.trades, [matching]);
+  const older = mergeLiveTradePage(tradePage([]), [sampleTrade], { ...query, after: 'older-page' });
+  assert.deepEqual(older.trades, []);
+  assert.equal(older.hasNewTrades, false);
+});
+
+
+test('a Side amendment removes a BUY from a BUY-only page without accepting a stale version', () => {
+  const result = mergeLiveTradePage(tradePage([sampleTrade]), [
+    { ...sampleTrade, side: 'SELL', version: 2 }, sampleTrade,
+  ], { ...defaultTradeListQuery, side: 'BUY' });
+  assert.deepEqual(result.trades, []);
+  assert.equal(result.needsRefill, true);
+});
