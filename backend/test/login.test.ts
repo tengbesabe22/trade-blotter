@@ -14,6 +14,7 @@ function setup(overrides: Partial<AuthRepository> = {}, secureCookies = false) {
     {
       auth: { ...fixture.repository, ...overrides },
       trades: {
+        cancel: async () => { throw new Error('Unexpected trade cancellation in this test.'); },
         amend: async () => { throw new Error('Unexpected trade amendment in this test.'); },
         list: async () => ({ records: [], hasNextPage: false }),
         create: async () => {

@@ -12,6 +12,7 @@ import type {
   AmendTradeResult,
   NormalizedAmendTradeRequest,
 } from './amendments/trade-amend-contract';
+import type { CancelTradeCommand, CancelTradeResult } from './cancellations/trade-cancel-contract';
 import type { NormalizedTradeListQuery } from './listing/trade-query-contract';
 import type { TradeCursorBoundary } from './listing/trade-cursor';
 import { tradeBoundaryFilter, tradeListFilters, tradeListOrder } from './listing/trade-list-query';
@@ -33,6 +34,7 @@ export type TradeRepository = {
   list: (query: NormalizedTradeListQuery, boundary: TradeCursorBoundary | null) => Promise<TradePage>;
   create: (command: CreateTradeCommand) => Promise<CreateTradeResult>;
   amend: (command: AmendTradeCommand) => Promise<AmendTradeResult>;
+  cancel: (command: CancelTradeCommand) => Promise<CancelTradeResult>;
 };
 
 type TradeDatabase = Pick<DatabaseClient, 'trade' | '$transaction' | 'idempotencyRequest'>;
@@ -213,6 +215,42 @@ export function createTradeRepository(database: TradeDatabase): TradeRepository 
       });
 
       return { kind: 'amended', body: { trade: amendedTrade } };
+    }),
+
+    cancel: ({ userId, tradeId, input }) => database.$transaction(async (tx): Promise<CancelTradeResult> => {
+      const include = {
+        instrument: { select: { symbol: true } },
+        user: { select: { displayName: true } },
+      } as const;
+
+      // Unique ID limits this to one row; all authorization/version checks are atomic.
+      const [cancelled] = await tx.trade.updateManyAndReturn({
+        where: { id: tradeId, userId, status: 'ACTIVE', version: input.expectedVersion },
+        data: { status: 'CANCELLED', version: { increment: 1 } },
+        include,
+      });
+
+      if (!cancelled) {
+        // Only rejected updates need a read to explain which condition did not match.
+        const current = await tx.trade.findUnique({ where: { id: tradeId }, include });
+        if (!current) return { kind: 'not-found' };
+        if (current.userId !== userId) return { kind: 'forbidden' };
+        return { kind: 'conflict', currentTrade: toTradeResponse(current) };
+      }
+
+      const cancelledTrade = toTradeResponse(cancelled);
+      await tx.outboxEvent.create({
+        data: {
+          type: 'TRADE_CANCELLED',
+          actorId: userId,
+          tradeId,
+          tradeVersion: cancelled.version,
+          // Delivery outbox metadata; permanent audit history remains separate work.
+          payload: { trade: cancelledTrade, reason: input.reason },
+        },
+      });
+
+      return { kind: 'cancelled', body: { trade: cancelledTrade } };
     }),
 
     list: async (query, boundary): Promise<TradePage> => {
