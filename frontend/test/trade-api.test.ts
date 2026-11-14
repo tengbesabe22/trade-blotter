@@ -166,3 +166,31 @@ for (const [field, maxLength] of [['book', 64], ['counterparty', 120]] as const)
     assert.equal(query.get(field)?.length, maxLength);
   });
 }
+
+
+test('listing sends UTC execution-date bounds and supports either open end', async (t) => {
+  const mock = t.mock.method(globalThis, 'fetch', async () => Response.json(tradePage()));
+  const bounds = { tradeDateFrom: '2026-11-14T00:00:00.000Z', tradeDateTo: '2026-11-15T00:00:00.000Z' };
+  for (const range of [bounds, { tradeDateFrom: bounds.tradeDateFrom }, { tradeDateTo: bounds.tradeDateTo }]) {
+    await tradeApi.list({ ...defaultTradeListQuery, ...range });
+    const query = new URL(String(mock.mock.calls.at(-1)!.arguments[0]), 'http://localhost').searchParams;
+    assert.equal(query.get('tradeDateFrom'), 'tradeDateFrom' in range ? range.tradeDateFrom : null);
+    assert.equal(query.get('tradeDateTo'), 'tradeDateTo' in range ? range.tradeDateTo : null);
+  }
+});
+
+test('invalid date bounds fail before fetch for the correct validation reason', async (t) => {
+  const mock = stubResponse(t, Response.json(tradePage()));
+  for (const bounds of [
+    { tradeDateFrom: '2026-11-14' },
+    { tradeDateFrom: '2026-11-15T00:00:00.000Z', tradeDateTo: '2026-11-14T00:00:00.000Z' },
+    { tradeDateFrom: '2026-11-14T00:00:00.000Z', tradeDateTo: '2026-11-14T00:00:00.000Z' },
+  ]) {
+    await assert.rejects(tradeApi.list({ ...defaultTradeListQuery, ...bounds }), (error) => {
+      assert.ok(error instanceof ZodError);
+      assert.ok(error.issues.some((issue) => issue.path[0] === 'tradeDateFrom' || issue.path[0] === 'tradeDateTo'));
+      return true;
+    });
+  }
+  assert.equal(mock.mock.callCount(), 0);
+});

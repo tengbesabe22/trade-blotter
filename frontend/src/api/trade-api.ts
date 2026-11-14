@@ -99,6 +99,8 @@ export const tradeApi = {
     if (request.side) parameters.set('side', request.side);
     if (request.book) parameters.set('book', request.book);
     if (request.counterparty) parameters.set('counterparty', request.counterparty);
+    if (request.tradeDateFrom) parameters.set('tradeDateFrom', request.tradeDateFrom);
+    if (request.tradeDateTo) parameters.set('tradeDateTo', request.tradeDateTo);
 
     const response = await apiRequest(`/trades?${parameters}`, {
       signal,

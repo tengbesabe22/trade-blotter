@@ -196,3 +196,30 @@ test('a newer amendment leaving the text search removes the row and invalidates 
     assert.deepEqual(mergeLiveTradePage(tradePage([updated]), [original], request).trades, []);
   }
 });
+
+
+test('SSE date matching includes From midnight and the whole Through day, excluding next midnight', () => {
+  const from = '2026-11-14T00:00:00.000Z';
+  const to = '2026-11-15T00:00:00.000Z';
+  const rows = ['2026-11-13T23:59:59.999Z', from, '2026-11-14T23:59:59.999Z', to].map((tradeDate, index) => ({
+    ...sampleTrade, id: `f1550000-0000-4000-8000-00000010000${index}`, tradeDate,
+  }));
+  for (const [bounds, dates] of [
+    [{ tradeDateFrom: from, tradeDateTo: to }, [rows[2].tradeDate, rows[1].tradeDate]],
+    [{ tradeDateFrom: from }, [rows[3].tradeDate, rows[2].tradeDate, rows[1].tradeDate]],
+    [{ tradeDateTo: to }, [rows[2].tradeDate, rows[1].tradeDate, rows[0].tradeDate]],
+  ] as const) {
+    const result = mergeLiveTradePage(tradePage(), rows, { ...defaultTradeListQuery, ...bounds });
+    assert.deepEqual(result.trades.map((trade) => trade.tradeDate), dates);
+  }
+});
+
+test('a newer trade moving outside the date range is removed and requires a fresh page', () => {
+  const original = { ...sampleTrade, tradeDate: '2026-11-14T09:00:00.000Z' };
+  const updated = { ...original, version: 2, tradeDate: '2026-11-15T00:00:00.000Z' };
+  const query = { ...defaultTradeListQuery, tradeDateTo: '2026-11-15T00:00:00.000Z' };
+  const result = mergeLiveTradePage(tradePage([original], { nextCursor: 'old' }), [updated], query);
+  assert.equal(result.trades.length, 0);
+  assert.equal(result.pageInfo.nextCursor, null);
+  assert.equal(result.needsRefill, true);
+});

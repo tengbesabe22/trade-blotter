@@ -8,14 +8,16 @@ export function isLiveFirstPage(request: TradeListQuery): boolean {
   return !request.after && request.sortBy === 'tradeDate' && request.sortDirection === 'desc';
 }
 
-// Mirror server selections and literal, case-insensitive text searches for SSE.
+// Mirror server filters for SSE. Date strings are fixed-format UTC, so lexical comparisons match time.
 export function matchesTradeFilters(trade: Trade, request: TradeListQuery): boolean {
   return (!request.symbol || trade.symbol === request.symbol) &&
     (!request.traderId || trade.ownerId === request.traderId) &&
     (!request.status || trade.status === request.status) &&
     (!request.side || trade.side === request.side) &&
     (!request.book || (trade.book ?? '').toLowerCase().includes(request.book)) &&
-    (!request.counterparty || (trade.counterparty ?? '').toLowerCase().includes(request.counterparty));
+    (!request.counterparty || (trade.counterparty ?? '').toLowerCase().includes(request.counterparty)) &&
+    (!request.tradeDateFrom || trade.tradeDate >= request.tradeDateFrom) &&
+    (!request.tradeDateTo || trade.tradeDate < request.tradeDateTo);
 }
 
 // Choose a merge strategy without mixing row updates with pagination rules.

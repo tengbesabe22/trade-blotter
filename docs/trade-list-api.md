@@ -129,18 +129,26 @@ Options come from the complete reference lookup rather than the loaded trade pag
 Loading/failure disables only the ticker/trader dropdowns; errors offer an explicit
 retry and expired sessions use the existing sign-in callback. Empty lists retain All. Changing a
 filter returns to page one; sorting/page-size changes preserve all applied filters.
-Book and Counterparty text inputs apply together using Apply text filters or Enter.
+Book, Counterparty, From (UTC) and Through (UTC) apply together using Apply filters
+or Enter. Dates refer to execution time, matching the table’s UTC display.
 Typing only edits local drafts: it sends no request and leaves active SSE matching
 unchanged. Applying trims surrounding whitespace, ignores case, treats %, _ and
 backslash literally, and uses partial matching. Blank text removes that filter;
 limits are 64/120 characters. Apply is disabled when normalized drafts match the
 applied values. These controls work independently of the options lookup.
 
-Clear filters resets all six filters and both text drafts together, returning to
+Date inputs select whole UTC days: From is inclusive midnight, while Through
+becomes exclusive midnight of the next day. For example, From/Through November 14
+sends `tradeDateFrom=2026-11-14T00:00:00.000Z` and
+`tradeDateTo=2026-11-15T00:00:00.000Z`. Either end can be blank. Through before From
+shows an inline error and applies none of the drafts; the same day is valid.
+Conversion uses UTC arithmetic, including month/year/leap-day rollover.
+
+Clear filters resets all eight filters and their drafts together, returning to
 page one while preserving sorting, page size and the Create trade draft. Clearing
 only an unapplied draft sends no trade request. It is disabled with no filters or
-drafts and remains usable if the options lookup fails. Date controls remain pending;
-the API supports the table above.
+drafts and remains usable if the options lookup fails. All listed filter fields
+now have frontend controls.
 AG Grid renders the returned page without locally reordering it. TanStack Query
 keys include the active request and cancel obsolete fetches; inactive pages are released.
 During Next/Previous loading, the previous rows stay visible so the grid remains
@@ -149,7 +157,8 @@ navigation stays disabled until the requested page supplies its own cursor. Filt
 changes show loading instead of retaining rows from a different selection. Empty
 filtered results say No matching trades.
 
-SSE uses the same ticker/trader/Status/Side and applied book/counterparty rules: resolve versions, filter, then limit. A visible
+SSE uses the same selections, applied text searches and UTC date bounds: resolve
+versions, filter, then limit. A visible
 row leaving the selection is removed immediately and invalidates the page cursor.
 Nearby exits batch for 100 ms before one current-page background read. It uses the
 selected limit (maximum 200), merges newer buffered events, and does not renew idle

@@ -444,7 +444,7 @@ test('applying text searches hides old-filter rows and live events use the appli
   fireEvent.change(controls.getByRole('textbox', { name: 'Book filter' }), { target: { value: 'uk' } });
   fireEvent.change(controls.getByRole('textbox', { name: 'Counterparty filter' }), { target: { value: 'goldman' } });
   assert.equal(h.fetchMock.mock.callCount(), 1);
-  fireEvent.click(controls.getByRole('button', { name: 'Apply text filters' }));
+  fireEvent.click(controls.getByRole('button', { name: 'Apply filters' }));
   await waitFor(() => assert.equal(h.fetchMock.mock.callCount(), 2));
   assert.equal(screen.queryByText('AAPL') === null, true);
   const matching = { ...newer, book: 'EQUITIES_UK', counterparty: 'Goldman Sachs' };
@@ -460,6 +460,33 @@ test('applying text searches hides old-filter rows and live events use the appli
   });
   assert.equal(h.page()?.trades.length, 1);
   assert.equal(h.page()?.trades[0]?.version, 2);
+  assert.equal(h.fetchMock.mock.callCount(), 2);
+  assert.equal(FakeEventSource.sources.length, 1);
+});
+
+
+test('date-only Apply hides previous-filter rows and retains matching SSE during the snapshot', async (t) => {
+  let finish!: (response: Response) => void;
+  const pending = new Promise<Response>((resolve) => { finish = resolve; });
+  const h = setup(t, async (input) => new URL(String(input), 'http://localhost').searchParams.has('tradeDateFrom')
+    ? pending : Response.json(tradePage([sampleTrade])));
+  await act(async () => { h.source.emit('stream.ready', ready); });
+  await screen.findByText('AAPL');
+  const controls = within(screen.getByRole('region', { name: 'Sort and filter' }));
+  fireEvent.change(controls.getByLabelText('From (UTC)'), { target: { value: '2026-11-14' } });
+  fireEvent.change(controls.getByLabelText('Through (UTC)'), { target: { value: '2026-11-14' } });
+  assert.equal(h.fetchMock.mock.callCount(), 1);
+  fireEvent.click(controls.getByRole('button', { name: 'Apply filters' }));
+  await waitFor(() => assert.equal(h.fetchMock.mock.callCount(), 2));
+  assert.equal(screen.queryByText('AAPL') === null, true);
+  const matching = { ...newer, tradeDate: '2026-11-14T23:59:59.999Z' };
+  await act(async () => {
+    h.source.emit('trade.changed', { ...change, trade: matching });
+    h.source.emit('trade.changed', { ...change, trade: { ...sampleTrade, tradeDate: '2026-11-15T00:00:00.000Z' } });
+    finish(Response.json(tradePage()));
+  });
+  await screen.findByText('TSLA');
+  assert.deepEqual(h.page()?.trades, [matching]);
   assert.equal(h.fetchMock.mock.callCount(), 2);
   assert.equal(FakeEventSource.sources.length, 1);
 });

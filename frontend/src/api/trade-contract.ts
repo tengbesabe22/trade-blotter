@@ -30,7 +30,11 @@ export const tradeListQuerySchema = z.strictObject({
   side: z.enum(['BUY', 'SELL']).optional(),
   book: z.string().trim().max(64).transform((value) => value.toLowerCase() || undefined).optional(),
   counterparty: z.string().trim().max(120).transform((value) => value.toLowerCase() || undefined).optional(),
+  tradeDateFrom: z.iso.datetime({ precision: 3 }).optional(),
+  tradeDateTo: z.iso.datetime({ precision: 3 }).optional(),
   after: z.string().min(1).max(2048).optional(),
+}).refine((query) => !query.tradeDateFrom || !query.tradeDateTo || query.tradeDateFrom < query.tradeDateTo, {
+  path: ['tradeDateTo'], message: 'The execution-time upper bound must be after the lower bound.',
 });
 
 export type TradeListQuery = z.infer<typeof tradeListQuerySchema>;

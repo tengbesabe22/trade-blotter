@@ -512,7 +512,7 @@ test('Clear filters makes one unfiltered page-one request while preserving sorti
 });
 
 
-test('applying text filters makes one page-one request, preserves sorting and clears back to all trades', async (t) => {
+test('applying text and UTC dates makes one page-one request, preserves sorting and clears back to all trades', async (t) => {
   const urls: URL[] = [];
   showTrades(t, async (input) => {
     const url = new URL(String(input), 'http://localhost');
@@ -529,13 +529,17 @@ test('applying text filters makes one page-one request, preserves sorting and cl
   const requestsBeforeTyping = urls.length;
   fireEvent.change(controls.getByRole('textbox', { name: 'Book filter' }), { target: { value: '  Equities  ' } });
   fireEvent.change(controls.getByRole('textbox', { name: 'Counterparty filter' }), { target: { value: '  Goldman  ' } });
+  fireEvent.change(controls.getByLabelText('From (UTC)'), { target: { value: '2026-11-14' } });
+  fireEvent.change(controls.getByLabelText('Through (UTC)'), { target: { value: '2026-11-14' } });
   assert.equal(urls.length, requestsBeforeTyping);
-  fireEvent.click(controls.getByRole('button', { name: 'Apply text filters' }));
+  fireEvent.click(controls.getByRole('button', { name: 'Apply filters' }));
   await screen.findByText('No matching trades');
   assert.equal(urls.length, requestsBeforeTyping + 1);
   const query = urls.at(-1)!.searchParams;
   assert.equal(query.get('book'), 'equities');
   assert.equal(query.get('counterparty'), 'goldman');
+  assert.equal(query.get('tradeDateFrom'), '2026-11-14T00:00:00.000Z');
+  assert.equal(query.get('tradeDateTo'), '2026-11-15T00:00:00.000Z');
   assert.equal(query.has('after'), false);
   assert.equal(query.get('sortBy'), 'price');
   assert.equal(query.get('limit'), '25');
@@ -545,4 +549,6 @@ test('applying text filters makes one page-one request, preserves sorting and cl
   assert.equal(urls.length, requestsBeforeTyping + 2);
   assert.equal(urls.at(-1)!.searchParams.has('book'), false);
   assert.equal(urls.at(-1)!.searchParams.has('counterparty'), false);
+  assert.equal(urls.at(-1)!.searchParams.has('tradeDateFrom'), false);
+  assert.equal(urls.at(-1)!.searchParams.has('tradeDateTo'), false);
 });

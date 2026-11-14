@@ -103,7 +103,7 @@ test('Clear filters stays usable after lookup failure and is disabled once every
   fireEvent.click(clear);
   assert.deepEqual(h.events.queries.at(-1), {
     ...defaultTradeListQuery, symbol: undefined, traderId: undefined, status: undefined, side: undefined,
-    book: undefined, counterparty: undefined, after: undefined,
+    book: undefined, counterparty: undefined, tradeDateFrom: undefined, tradeDateTo: undefined, after: undefined,
   });
   assert.equal(clear.hasAttribute('disabled'), true);
   fireEvent.click(clear);
@@ -122,13 +122,13 @@ test('text searches apply together only on submission and preserve dropdown filt
   fireEvent.change(book, { target: { value: '  EQUITIES_  ' } });
   fireEvent.change(counterparty, { target: { value: '  Goldman  ' } });
   assert.equal(h.events.queries.length, 0);
-  fireEvent.click(screen.getByRole('button', { name: 'Apply text filters' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Apply filters' }));
   assert.deepEqual(h.events.queries.at(-1), { ...defaultTradeListQuery, status: 'ACTIVE', side: 'BUY',
-    book: 'equities_', counterparty: 'goldman', after: undefined });
+    book: 'equities_', counterparty: 'goldman', tradeDateFrom: undefined, tradeDateTo: undefined, after: undefined });
   assert.equal(h.events.queries.length, 1);
-  assert.equal(screen.getByRole('button', { name: 'Apply text filters' }).hasAttribute('disabled'), true);
+  assert.equal(screen.getByRole('button', { name: 'Apply filters' }).hasAttribute('disabled'), true);
   fireEvent.change(book, { target: { value: ' ' } });
-  fireEvent.submit(screen.getByRole('form', { name: 'Book and counterparty filters' }));
+  fireEvent.submit(screen.getByRole('form', { name: 'Trade filters' }));
   assert.equal(h.events.queries.at(-1)?.book, undefined);
   assert.equal(h.events.queries.at(-1)?.counterparty, 'goldman');
   assert.equal(h.events.queries.length, 2);
@@ -141,7 +141,7 @@ test('Clear filters removes applied text and unapplied drafts even when option l
   const book = screen.getByRole('textbox', { name: 'Book filter' }) as HTMLInputElement;
   const counterparty = screen.getByRole('textbox', { name: 'Counterparty filter' }) as HTMLInputElement;
   fireEvent.change(book, { target: { value: 'uk' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Apply text filters' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Apply filters' }));
   fireEvent.change(counterparty, { target: { value: 'unsaved' } });
   fireEvent.click(screen.getByRole('button', { name: 'Clear filters' }));
   assert.equal(book.value, '');
@@ -155,4 +155,47 @@ test('Clear filters removes applied text and unapplied drafts even when option l
   fireEvent.click(screen.getByRole('button', { name: 'Clear filters' }));
   assert.equal(book.value, '');
   assert.equal(h.events.queries.length, changesBeforeDraft);
+});
+
+
+test('dates and text stay in drafts until one shared Apply, with inclusive UTC days', async (t) => {
+  const h = setup(t, async () => Response.json(tradeOptions));
+  await screen.findByRole('option', { name: 'MSFT — Microsoft Corporation' });
+  const from = screen.getByLabelText('From (UTC)') as HTMLInputElement;
+  const through = screen.getByLabelText('Through (UTC)') as HTMLInputElement;
+  assert.equal(from.type, 'date');
+  assert.equal(through.type, 'date');
+  fireEvent.change(from, { target: { value: '2026-11-14' } });
+  fireEvent.change(through, { target: { value: '2026-11-14' } });
+  fireEvent.change(screen.getByRole('textbox', { name: 'Book filter' }), { target: { value: ' UK ' } });
+  assert.equal(h.events.queries.length, 0);
+  fireEvent.click(screen.getByRole('button', { name: 'Apply filters' }));
+  assert.deepEqual(h.events.queries.at(-1), { ...defaultTradeListQuery, status: 'ACTIVE', side: 'BUY',
+    book: 'uk', counterparty: undefined, after: undefined,
+    tradeDateFrom: '2026-11-14T00:00:00.000Z', tradeDateTo: '2026-11-15T00:00:00.000Z' });
+  assert.equal(h.events.queries.length, 1);
+  assert.equal(screen.getByRole('button', { name: 'Apply filters' }).hasAttribute('disabled'), true);
+  fireEvent.change(through, { target: { value: '' } });
+  fireEvent.submit(screen.getByRole('form', { name: 'Trade filters' }));
+  assert.equal(h.events.queries.at(-1)?.tradeDateTo, undefined);
+  assert.equal(h.events.queries.at(-1)?.tradeDateFrom, '2026-11-14T00:00:00.000Z');
+  fireEvent.click(screen.getByRole('button', { name: 'Clear filters' }));
+  assert.equal(from.value, '');
+  assert.equal(through.value, '');
+  assert.equal(h.events.queries.at(-1)?.tradeDateFrom, undefined);
+  assert.equal(h.events.queries.at(-1)?.tradeDateTo, undefined);
+});
+
+test('reversed date drafts show an inline error without applying any drafts; Clear removes the error', async (t) => {
+  const h = setup(t, async () => Response.json(tradeOptions));
+  await screen.findByRole('option', { name: 'MSFT — Microsoft Corporation' });
+  fireEvent.change(screen.getByLabelText('From (UTC)'), { target: { value: '2026-11-15' } });
+  fireEvent.change(screen.getByLabelText('Through (UTC)'), { target: { value: '2026-11-14' } });
+  fireEvent.change(screen.getByRole('textbox', { name: 'Book filter' }), { target: { value: 'draft' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Apply filters' }));
+  assert.match(screen.getByRole('alert').textContent ?? '', /Through must be on or after From/);
+  assert.equal(h.events.queries.length, 0);
+  fireEvent.click(screen.getByRole('button', { name: 'Clear filters' }));
+  assert.equal(screen.queryByText('Through must be on or after From.') === null, true);
+  assert.equal(screen.getByRole('button', { name: 'Apply filters' }).hasAttribute('disabled'), true);
 });

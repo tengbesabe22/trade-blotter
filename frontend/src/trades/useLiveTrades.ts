@@ -38,7 +38,8 @@ export function useLiveTrades(request: TradeListQuery, savedTrade: Trade | null 
       const sameFilters = previousRequest?.symbol === request.symbol &&
         previousRequest?.traderId === request.traderId &&
         previousRequest?.status === request.status && previousRequest?.side === request.side &&
-        previousRequest?.book === request.book && previousRequest?.counterparty === request.counterparty;
+        previousRequest?.book === request.book && previousRequest?.counterparty === request.counterparty &&
+        previousRequest?.tradeDateFrom === request.tradeDateFrom && previousRequest?.tradeDateTo === request.tradeDateTo;
       return sameFilters ? previous : undefined;
     },
     // Wait for ready, or allow HTTP-only fallback when streaming is unavailable.
