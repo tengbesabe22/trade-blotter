@@ -148,8 +148,8 @@ and UTC times; creation or a missing predecessor shows the saved trade terms.
 filters, cursor navigation, grid state, the Create draft and its existing SSE
 connection. Back to trades restores focus to the blotter heading. History gets focus
 when opened and its pending read is cancelled when closed. No router or extra SSE
-connection is added. History refresh is manual in this slice; automatic history
-invalidation from trade events remains a separate refinement.
+connection is added. History intentionally uses manual refresh for the MVP. Audit history is inspected
+on demand; automatic refresh from trade events is outside the current scope.
 
 ## Verification
 
