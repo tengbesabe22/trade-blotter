@@ -1,4 +1,10 @@
 import {
+  cancelTradeIdSchema,
+  cancelTradeRequestSchema,
+  cancelTradeResponseSchema,
+  type CancelTradeRequest,
+} from './trade-cancel-contract';
+import {
   amendTradeIdSchema,
   amendTradeRequestSchema,
   amendTradeResponseSchema,
@@ -9,6 +15,28 @@ import { ApiError, apiRequest } from './api-client';
 import { defaultTradeListQuery, tradeListQuerySchema, tradeListResponseSchema, type TradeListQuery, type TradeListResponse } from './trade-contract';
 
 export const tradeApi = {
+  cancel: async (tradeId: string, input: CancelTradeRequest) => {
+    const id = cancelTradeIdSchema.parse(tradeId);
+    const request = cancelTradeRequestSchema.parse(input);
+    const response = await apiRequest(`/trades/${id}/cancel`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(request),
+    });
+    const body: unknown = await response.json().catch(() => null);
+    const validation = cancelTradeResponseSchema.safeParse(body);
+
+    if (
+      !validation.success ||
+      validation.data.trade.id !== id ||
+      validation.data.trade.version !== request.expectedVersion + 1
+    ) {
+      throw new ApiError(response.status, 'INVALID_RESPONSE', 'The server returned an unexpected cancellation response.');
+    }
+
+    return validation.data.trade;
+  },
+
   amend: async (tradeId: string, input: AmendTradeRequest) => {
     const id = amendTradeIdSchema.parse(tradeId);
     const request = amendTradeRequestSchema.parse(input);

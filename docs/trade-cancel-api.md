@@ -2,8 +2,8 @@
 
 `POST /api/trades/:id/cancel` cancels an owned ACTIVE trade. The record stays in
 the blotter with status `CANCELLED`; its business fields are retained.
-The endpoint and cancellation SSE delivery are implemented. The cancel UI remains
-pending.
+The endpoint, cancellation SSE delivery and frontend API client are implemented.
+The row action and confirmation panel remain pending.
 
 ## Request
 
@@ -38,6 +38,17 @@ curl -i -b .cookies -X POST 'http://localhost:3000/api/trades/<trade-id>/cancel'
 
 Responses use `Cache-Control: no-store`. On conflict, review current state rather
 than automatically substituting its version and retrying.
+
+## Browser client
+
+`tradeApi.cancel(tradeId, {expectedVersion, reason?})` validates the UUID and strict
+request, posts with the session cookie, and returns the validated CANCELLED trade.
+The response must match the requested ID and increment the submitted version once.
+No idempotency key or automatic retry is added; submitted versions are not replaced.
+
+Conflicts keep their details in `ApiError.responseBody` as `unknown`. Validate with
+`cancelTradeConflictSchema` before reviewing its ACTIVE or already-CANCELLED
+`currentTrade`. Network/malformed-success errors leave the outcome unconfirmed.
 
 ## Persistence and delivery
 
