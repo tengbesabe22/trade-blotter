@@ -2,7 +2,8 @@
 
 **Implemented:** calculation helper, SymbolSummary model/migration and seeded totals.
 The local database has been reset and reseeded. Create, amend and cancel now update
-summaries transactionally. Summary API/SSE and UI remain planned.
+summaries transactionally. The read response contract, repository and mapper are implemented/tested; the
+endpoint, summary SSE and UI remain planned.
 
 ## Scope
 
@@ -146,13 +147,60 @@ read. Combined with creation, all57 mutation repository cases and all368 backend
 tests pass, with root typecheck/build. These tests use fake persistence, not live
 PostgreSQL concurrency/rollback checks. No schema/data or API/SSE shape change.
 
+## Read response contract
+
+The planned GET /api/summaries response is `{schemaVersion: 1, generatedAt, summaries}`.
+It is one complete desk-wide list, including retained zero rows, independent of
+trade filters/pages. Empty lists are valid; there is no pagination or arbitrary
+100-instrument cap. Each instrument ID must appear once, ignoring UUID letter case.
+
+`symbolSummarySchema` describes one row: instrumentId, normalized symbol, USD
+currency, buyQuantity, sellQuantity, netQuantity, buyValue, sellValue, version and
+updatedAt. Quantities are canonical six-place decimal strings (22 whole digits
+maximum); executed values use ten places (28 whole digits). Bought/sold quantities
+and values are nonnegative. Net quantity permits a minus sign, with unsigned zero
+for flat positions. Amount bounds follow the aggregate database columns, rather
+than the stricter limits on one trade. Versions span zero through PostgreSQL Int's
+maximum; times are UTC ISO strings with milliseconds.
+
+The contract validates payload formats and identity uniqueness. The read mapper
+derives netQuantity as bought minus sold with exact decimal arithmetic; it is not
+calculated by the schema. Direction follows its sign in the frontend.
+There are no trader/book/date scope fields, market prices or P&L fields in this
+response. Stored buyValue/sellValue are included for future valuation work; the
+initial position panel renders the quantity fields.
+
+Ten schema tests cover exact strings, zero/long/short/flat rows, aggregate bounds,
+invalid formats, revisions, normalized identity, USD/UTC, duplicate keys and empty/
+large lists. All378 backend tests, root typecheck and backend build pass. The route,
+read repository and SSE contract are not changed in this slice.
+
+## Read repository and mapper
+
+TradeRepository.listSummaries reads all stored SymbolSummary rows, ordered by
+instrument symbol, with only symbol/currency selected from the instrument relation.
+It does not scan trades, apply blotter filters, paginate or recalculate stored totals.
+An empty table returns an empty list. No multi-query transaction is needed.
+
+trade-summary-mapper.ts converts each row to the public symbol summary. For example,
+buyQuantity=100 and sellQuantity=30 produce netQuantity="70.000000". It preserves
+stored versions/timestamps, formats quantities to six places and values to ten, and
+validates the result against symbolSummarySchema. Internal row IDs are omitted.
+An isolated Decimal constructor with precision 40 preserves subtraction across all
+28 quantity digits without changing global Prisma Decimal settings. No Number
+conversion is used. Invalid rows and database failures propagate to the caller.
+
+Ten additional tests use fake persistence and real Prisma Decimal values, covering
+mapping, long/short/flat/zero rows, aggregate precision boundaries, complete/empty
+reads and failure paths. All 388 backend tests, root typecheck and backend build
+pass. No live database test or HTTP/SSE/frontend change is part of this slice.
+
 ## Next slice
 
-Add summary reads and event delivery. All mutation paths now maintain totals from
-a correct starting state; pre-existing drift from earlier partial wiring is not
-repaired automatically. Verify current totals before exposing the endpoint/UI.
-Valuation marks and indicative P&L remain later work. Summary updates will push
-authoritative versioned snapshots through the existing SSE path.
+Implement GET /api/summaries, followed by event
+summary snapshots and the docked panel. All mutations maintain totals from a correct
+starting state; earlier drift is not repaired automatically. Verify current totals
+before exposing the endpoint/UI. Valuation marks and indicative P&L remain later work.
 
 References: [Decimal.js independent constructors](https://mikemcl.github.io/decimal.js/#Dclone),
 [IBKR daily trade log](https://www.ibkrguides.com/traderworkstation/trade-log.htm),

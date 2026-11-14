@@ -19,6 +19,8 @@ import type { TradeCursorBoundary } from './listing/trade-cursor';
 import { tradeBoundaryFilter, tradeListFilters, tradeListOrder } from './listing/trade-list-query';
 import type { TradeHistoryEntry } from './history/trade-history-contract';
 import { toTradeHistoryEntries } from './history/trade-history-mapper';
+import type { SymbolSummary } from './summaries/trade-summary-contract';
+import { toSymbolSummary } from './summaries/trade-summary-mapper';
 import {
   calculateTradeContribution, calculateSummaryDelta, hasSummaryChanges, type TradeContribution,
 } from './summaries/trade-summary-calculation';
@@ -41,6 +43,7 @@ export type TradeHistoryResult =
   | { kind: 'not-found' };
 
 export type TradeRepository = {
+  listSummaries: () => Promise<SymbolSummary[]>;
   listHistory: (tradeId: string) => Promise<TradeHistoryResult>;
   listFilterOptions: () => Promise<TradeFilterOptions>;
   list: (query: NormalizedTradeListQuery, boundary: TradeCursorBoundary | null) => Promise<TradePage>;
@@ -49,7 +52,10 @@ export type TradeRepository = {
   cancel: (command: CancelTradeCommand) => Promise<CancelTradeResult>;
 };
 
-type TradeDatabase = Pick<DatabaseClient, 'trade' | '$transaction' | 'idempotencyRequest' | 'instrument' | 'user' | 'tradeAudit'>;
+type TradeDatabase = Pick<
+  DatabaseClient,
+  'trade' | '$transaction' | 'idempotencyRequest' | 'instrument' | 'user' | 'tradeAudit' | 'symbolSummary'
+>;
 type SavedCreateRequest = { requestFingerprint: string; responseBody: Prisma.JsonValue };
 
 function replayCreateRequest(saved: SavedCreateRequest, fingerprint: string): CreateTradeResult {
@@ -109,6 +115,16 @@ async function updateSymbolSummary(
 
 export function createTradeRepository(database: TradeDatabase): TradeRepository {
   return {
+    listSummaries: async () => {
+      // Totals are maintained by mutations; reads do not aggregate the trade table.
+      const rows = await database.symbolSummary.findMany({
+        orderBy: { instrument: { symbol: 'asc' } },
+        include: { instrument: { select: { symbol: true, currency: true } } },
+      });
+
+      return rows.map(toSymbolSummary);
+    },
+
     listHistory: async (tradeId): Promise<TradeHistoryResult> => {
       const trade = await database.trade.findUnique({ where: { id: tradeId }, select: { id: true } });
       if (!trade) return { kind: 'not-found' };

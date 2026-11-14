@@ -25,6 +25,7 @@ async function setup(role: 'TRADER' | 'READ_ONLY' = 'TRADER') {
   const app = createApp({
     auth: auth.repository,
     trades: {
+      listSummaries: async () => { throw new Error('Unexpected summary lookup in this test.'); },
       listHistory: async () => { throw new Error('Unexpected history lookup in this test.'); },
       listFilterOptions: async () => { throw new Error('Unexpected filter-options lookup in this test.'); },
       cancel: async () => { throw new Error('Unexpected trade cancellation in this test.'); },

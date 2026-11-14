@@ -25,6 +25,7 @@ async function setup(role: CurrentUser['role'] = 'TRADER', result = expected, fa
     expiresAt: new Date(now.getTime() + 8 * 60 * 60 * 1000),
   });
   const trades: TradeRepository = {
+    listSummaries: async () => { throw new Error('Unexpected summary lookup in this test.'); },
     listHistory: async () => { throw new Error('Unexpected history lookup in this test.'); },
     listFilterOptions: async () => {
       calls.options += 1;

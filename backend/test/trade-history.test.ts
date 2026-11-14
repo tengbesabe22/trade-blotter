@@ -48,6 +48,7 @@ async function setup(options: { role?: CurrentUser['role']; result?: TradeHistor
     expiresAt: new Date(now.getTime() + 8 * 60 * 60 * 1000),
   });
   const trades: TradeRepository = {
+    listSummaries: async () => { throw new Error('Unexpected summary lookup in this test.'); },
     listHistory: async (id) => {
       calls.push(id);
       if (options.fail) throw new Error('Private database credentials');

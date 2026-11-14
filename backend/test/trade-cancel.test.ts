@@ -40,6 +40,7 @@ async function setup(options: Options = {}) {
 
   // HTTP validation and guards are real; the repository supplies controlled outcomes.
   const trades: TradeRepository = {
+    listSummaries: async () => { throw new Error('Unexpected summary lookup in this test.'); },
     listHistory: async () => { throw new Error('Unexpected history lookup in this test.'); },
     amend: async () => { throw new Error('Cancellation must not amend trades.'); },
     list: async () => { throw new Error('Cancellation must not list trades.'); },
