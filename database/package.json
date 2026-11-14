@@ -20,7 +20,8 @@
     "studio": "prisma studio",
     "seed": "prisma generate && prisma db seed",
     "typecheck": "tsc --noEmit",
-    "build": "prisma generate && tsc -p tsconfig.build.json"
+    "build": "prisma generate && tsc -p tsconfig.build.json",
+    "test": "tsx --test test/*.test.ts"
   },
   "exports": {
     ".": {

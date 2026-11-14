@@ -52,8 +52,12 @@ pnpm db:seed
 ```
 
 PostgreSQL starts in the background on `localhost:5432`.
-Seeding creates 10 instruments, 4 accounts, and 500 synthetic trades.
-Rerunning the seed preserves existing records, passwords, and trade changes.
+Seeding creates 10 instruments, 4 accounts, 500 synthetic trades and 649 synthetic
+audit entries with coherent creation/amendment/cancellation histories. Trade and
+history inserts share one transaction. Rerunning preserves existing records,
+passwords, trade changes and audit history, reporting only newly inserted rows.
+Runtime audit writes and the history API/UI remain separate work; see the
+[history storage guide](docs/trade-history.md).
 
 ### 3. Start the API
 
@@ -125,7 +129,7 @@ the backend. `pnpm test` runs both backend and frontend tests. `pnpm start` runs
 the compiled API. Frontend lint/build are separate.
 
 GitHub Actions runs these checks with a frozen install on pushes to `main`, pull
-requests, and manual dispatch. Backend tests use fake repositories/database
+requests, and manual dispatch. Database seed tests and backend tests use fake database
 operations; frontend API/component tests mock fetch. Neither needs a running PostgreSQL instance.
 
 Live database concurrency/rollback verification and p50/p95 measurements remain

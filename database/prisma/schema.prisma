@@ -27,6 +27,7 @@ model User {
   sessions            Session[]
   outboxEvents        OutboxEvent[]
   idempotencyRequests IdempotencyRequest[]
+  auditEntries        TradeAudit[]
 }
 
 model Session {
@@ -59,9 +60,28 @@ model Trade {
   status       TradeStatus   @default(ACTIVE)
   version      Int           @default(1)
   outboxEvents OutboxEvent[]
+  auditEntries TradeAudit[]
 
   @@index([userId])
   @@index([instrumentId])
+}
+
+/// Append-only enforcement and snapshot checks live in the SQL migration.
+model TradeAudit {
+  id           String           @id @default(uuid()) @db.Uuid
+  tradeId      String           @db.Uuid
+  trade        Trade            @relation(fields: [tradeId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  tradeVersion Int
+  action       TradeAuditAction
+  actorId      String           @db.Uuid
+  actor        User             @relation(fields: [actorId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  reason       String?          @db.VarChar(500)
+  /// Public trade DTO; decimal strings and UTC timestamps retain their exact format.
+  snapshot     Json             @db.JsonB
+  recordedAt   DateTime         @default(now()) @db.Timestamptz(3)
+
+  // The unique index also supports a trade's history ordered by version.
+  @@unique([tradeId, tradeVersion])
 }
 
 model OutboxEvent {
@@ -122,4 +142,10 @@ enum TradeEventType {
 enum OutboxEventStatus {
   PENDING
   PUBLISHED
+}
+
+enum TradeAuditAction {
+  CREATED
+  AMENDED
+  CANCELLED
 }
