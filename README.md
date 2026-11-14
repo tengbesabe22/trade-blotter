@@ -105,6 +105,7 @@ All seeded trades and prices are fictional.
 | POST | `/api/auth/logout` | Revoke the current session |
 | GET | `/api/trades` | Read a bounded, sortable/filterable cursor page |
 | GET | `/api/trades/filter-options` | Read instrument/trader dropdown options |
+| GET | `/api/summaries` | Read current desk-wide symbol positions |
 | GET | `/api/events` | Stream trade changes with heartbeats and session checks |
 | POST | `/api/trades` | Create a trade or replay its saved response |
 | PATCH | `/api/trades/:id` | Amend an owned active trade |
@@ -113,7 +114,7 @@ All seeded trades and prices are fictional.
 Start with [authentication and curl examples](docs/authentication.md), then
 [listing trades](docs/trade-list-api.md), [creating a trade](docs/trade-create-api.md),
 [amending trades](docs/trade-amend-api.md), [cancelling trades](docs/trade-cancel-api.md),
-and the [SSE connection](docs/trade-stream-api.md).
+the [SSE connection](docs/trade-stream-api.md), and [position summaries](docs/trade-summaries.md).
 
 ## Checks and build
 

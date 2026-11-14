@@ -2,8 +2,8 @@
 
 **Implemented:** calculation helper, SymbolSummary model/migration and seeded totals.
 The local database has been reset and reseeded. Create, amend and cancel now update
-summaries transactionally. The read response contract, repository and mapper are implemented/tested; the
-endpoint, summary SSE and UI remain planned.
+summaries transactionally. The read response contract, repository, mapper and GET endpoint are implemented/tested.
+Summary SSE and UI remain planned.
 
 ## Scope
 
@@ -149,7 +149,7 @@ PostgreSQL concurrency/rollback checks. No schema/data or API/SSE shape change.
 
 ## Read response contract
 
-The planned GET /api/summaries response is `{schemaVersion: 1, generatedAt, summaries}`.
+The GET /api/summaries response is `{schemaVersion: 1, generatedAt, summaries}`.
 It is one complete desk-wide list, including retained zero rows, independent of
 trade filters/pages. Empty lists are valid; there is no pagination or arbitrary
 100-instrument cap. Each instrument ID must appear once, ignoring UUID letter case.
@@ -195,12 +195,30 @@ mapping, long/short/flat/zero rows, aggregate precision boundaries, complete/emp
 reads and failure paths. All 388 backend tests, root typecheck and backend build
 pass. No live database test or HTTP/SSE/frontend change is part of this slice.
 
+## GET endpoint
+
+GET /api/summaries requires a valid session; both TRADER and READ_ONLY can read the
+same desk-wide totals. The route calls listSummaries, adds schemaVersion=1 and a
+UTC generatedAt, then validates the complete response with tradeSummaryResponseSchema.
+An empty list returns 200. generatedAt records response generation time; stored
+per-symbol versions/timestamps describe the summary rows.
+
+The existing session middleware supplies Cache-Control: no-store and rejects missing,
+revoked or expired sessions with 401 before reading summaries. Foreground requests
+record activity. Automatic reads should send X-Session-Activity: background so they
+validate the session without extending idle time. Invalid response data or repository
+failures use the existing sanitized 500 response.
+
+Eleven route tests use fake repositories and an injected clock. All 399 backend
+tests, root typecheck and backend build pass. A separate read-only check of the local
+database found all 10 instrument summaries present and all four totals equal to the
+ACTIVE trade aggregates. This verification changed no data and is not a CI dependency.
+
 ## Next slice
 
-Implement GET /api/summaries, followed by event
-summary snapshots and the docked panel. All mutations maintain totals from a correct
-starting state; earlier drift is not repaired automatically. Verify current totals
-before exposing the endpoint/UI. Valuation marks and indicative P&L remain later work.
+Add event summary snapshots and the docked panel. All mutations maintain totals from
+a correct starting state; earlier drift is not repaired automatically. Valuation
+marks and indicative P&L remain later work.
 
 References: [Decimal.js independent constructors](https://mikemcl.github.io/decimal.js/#Dclone),
 [IBKR daily trade log](https://www.ibkrguides.com/traderworkstation/trade-log.htm),

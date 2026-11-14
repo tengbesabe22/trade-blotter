@@ -5,6 +5,7 @@ import { createSessionRoutes } from './auth/session-routes';
 import type { AuthOptions } from './auth/auth-contract';
 import type { TradeRepository } from './trades/trade-repository';
 import { createTradeRoutes } from './trades/trade-routes';
+import { createTradeSummaryRoutes } from './trades/summaries/trade-summary-routes';
 import { createTradeStreamRoutes } from './trades/sse/trade-stream-routes';
 import { createTradeBroadcaster, type TradeBroadcaster } from './trades/sse/trade-broadcaster';
 
@@ -39,6 +40,7 @@ export function createApp(
     options,
     services.onTradeChanged,
   ));
+  app.route('/api/summaries', createTradeSummaryRoutes(repositories.auth, repositories.trades, options));
   app.route('/api/events', createTradeStreamRoutes(repositories.auth, options, broadcaster));
 
   app.onError((error, c) => {
