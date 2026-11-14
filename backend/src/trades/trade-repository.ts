@@ -139,7 +139,19 @@ export function createTradeRepository(database: TradeDatabase): TradeRepository 
             trade: toTradeResponse({ ...newTrade, instrument }),
           };
 
-          // Save the exact resulting version; delivery happens after commit in a later slice.
+          // Keep the creation snapshot in the same transaction as the trade and delivery intent.
+          await tx.tradeAudit.create({
+            data: {
+              tradeId: newTrade.id,
+              tradeVersion: newTrade.version,
+              action: 'CREATED',
+              actorId: command.userId,
+              reason: null,
+              snapshot: responseBody.trade,
+            },
+          });
+
+          // Save the exact resulting version; delivery happens after commit.
           await tx.outboxEvent.create({
             data: {
               type: 'TRADE_CREATED',

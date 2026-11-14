@@ -32,7 +32,7 @@ const savedRequest = { requestFingerprint: command.requestFingerprint, responseB
 
 type SavedRequest = { requestFingerprint: string; responseBody: Prisma.JsonValue };
 type KeyLookup = { where: { userId_key: { userId: string; key: string } } };
-type FailurePoint = 'trade' | 'outbox' | 'idempotency';
+type FailurePoint = 'trade' | 'audit' | 'outbox' | 'idempotency';
 
 type FixtureOptions = {
   existing?: SavedRequest;
@@ -58,6 +58,7 @@ function setup(options: FixtureOptions = {}) {
   const reads = { instrument: 0 };
   const writes: {
     trade?: Prisma.TradeUncheckedCreateInput;
+    audit?: Prisma.TradeAuditUncheckedCreateInput;
     outbox?: Prisma.OutboxEventUncheckedCreateInput;
     idempotency?: Prisma.IdempotencyRequestUncheckedCreateInput;
   } = {};
@@ -97,6 +98,11 @@ function setup(options: FixtureOptions = {}) {
 
       return createdTrade;
     } },
+    tradeAudit: { create: async ({ data }: { data: Prisma.TradeAuditUncheckedCreateInput }) => {
+      calls.push('tx.audit');
+      writes.audit = data;
+      if (options.failAt === 'audit') throw failure;
+    } },
     outboxEvent: { create: async ({ data }: { data: Prisma.OutboxEventUncheckedCreateInput }) => {
       calls.push('tx.outbox');
       writes.outbox = data;
@@ -128,12 +134,12 @@ function setup(options: FixtureOptions = {}) {
   return { repository: createTradeRepository(database), calls, lookups, writes, failure, reads };
 }
 
-test('create saves the trade, full outbox payload, and original 201 result in one transaction', async () => {
+test('create saves the trade, creation audit, outbox payload and original 201 result in one transaction', async () => {
   const h = setup();
 
   assert.deepEqual(await h.repository.create(command), { kind: 'created', body: responseBody });
   assert.deepEqual(h.calls, [
-    'begin', 'tx.lookup', 'tx.instrument', 'tx.trade', 'tx.outbox', 'tx.idempotency', 'commit',
+    'begin', 'tx.lookup', 'tx.instrument', 'tx.trade', 'tx.audit', 'tx.outbox', 'tx.idempotency', 'commit',
   ]);
   assert.deepEqual(h.lookups[0], {
     where: { userId_key: { userId: command.userId, key: command.idempotencyKey } },
@@ -142,6 +148,10 @@ test('create saves the trade, full outbox payload, and original 201 result in on
     userId: command.userId, instrumentId: trade.instrumentId, side: 'BUY',
     quantity: command.input.quantity, price: command.input.price,
     tradeDate: new Date(command.input.tradeDate), book: null, counterparty: null,
+  });
+  assert.deepEqual(h.writes.audit, {
+    tradeId: trade.id, tradeVersion: 1, action: 'CREATED',
+    actorId: command.userId, reason: null, snapshot: responseBody.trade,
   });
   assert.deepEqual(h.writes.outbox, {
     type: 'TRADE_CREATED', actorId: command.userId, tradeId: trade.id,
@@ -175,7 +185,7 @@ test('a reused key with another fingerprint returns conflict without writes', as
   assert.deepEqual(h.calls, ['begin', 'tx.lookup', 'commit']);
 });
 
-test('unknown instruments do not create a trade, event, or completed idempotency result', async () => {
+test('unknown instruments create no trade, audit, event or completed idempotency result', async () => {
   const h = setup({ unknownInstrument: true });
 
   assert.deepEqual(await h.repository.create(command), { kind: 'unknown-instrument' });
@@ -190,7 +200,7 @@ test('malformed saved response JSON propagates a validation error', async () => 
   assert.deepEqual(h.calls, ['begin', 'tx.lookup', 'rollback']);
 });
 
-for (const failAt of ['trade', 'outbox', 'idempotency'] as const) {
+for (const failAt of ['trade', 'audit', 'outbox', 'idempotency'] as const) {
   test(`${failAt} failure escapes the transaction and prevents a successful result`, async () => {
     const h = setup({ failAt });
 
@@ -198,7 +208,8 @@ for (const failAt of ['trade', 'outbox', 'idempotency'] as const) {
     assert.equal(h.calls.at(-1), 'rollback');
     assert.equal(h.calls.includes('commit'), false);
     assert.equal(h.calls.includes('outside.lookup'), false);
-    if (failAt === 'trade') assert.equal(h.writes.outbox, undefined);
+    if (failAt === 'trade') assert.equal(h.writes.audit, undefined);
+    if (failAt === 'trade' || failAt === 'audit') assert.equal(h.writes.outbox, undefined);
     if (failAt !== 'idempotency') assert.equal(h.writes.idempotency, undefined);
   });
 }
@@ -214,6 +225,8 @@ for (const sameFingerprint of [true, false]) {
       ? { kind: 'replayed', body: responseBody }
       : { kind: 'idempotency-conflict' });
     assert.deepEqual(h.calls.slice(-2), ['rollback', 'outside.lookup']);
+    assert.equal(h.calls.filter((call) => call === 'tx.audit').length, 1);
+    assert.equal(h.calls.includes('commit'), false);
     assert.deepEqual(h.lookups[0], h.lookups[1]);
   });
 }
@@ -232,4 +245,15 @@ test('a key conflict without a committed winner propagates the original error', 
 
   await assert.rejects(h.repository.create(command), (error) => error === failure);
   assert.deepEqual(h.calls.slice(-2), ['rollback', 'outside.lookup']);
+});
+
+
+test('an audit version uniqueness error is not treated as an idempotent replay', async () => {
+  const failure = uniqueConflict('TradeAudit_tradeId_tradeVersion_key');
+  const h = setup({ failAt: 'audit', failure, winner: savedRequest });
+
+  await assert.rejects(h.repository.create(command), (error) => error === failure);
+  assert.deepEqual(h.calls, ['begin', 'tx.lookup', 'tx.instrument', 'tx.trade', 'tx.audit', 'rollback']);
+  assert.equal(h.writes.outbox, undefined);
+  assert.equal(h.writes.idempotency, undefined);
 });

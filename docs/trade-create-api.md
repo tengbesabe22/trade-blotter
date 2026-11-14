@@ -128,14 +128,18 @@ The fingerprint is SHA-256 of JSON with this fixed order:
 ```
 
 The repository checks for a saved response before consulting the catalog.
-For a new trade, **trade + full outbox payload + idempotency result commit together**.
+For a new trade, **trade + CREATED audit entry + full outbox payload + idempotency
+result commit together**. The audit stores the exact returned trade snapshot,
+resulting version, authenticated actor and null reason. PostgreSQL supplies its
+recording timestamp. Audit failures abort the transaction; matching replays return
+before any insert and add no history. Unknown instruments add no audit entry.
 A concurrent user/key conflict rolls back the losing transaction, then reads and
 compares the winner's committed result. Unrelated database errors propagate.
 
 After commit, a new create wakes the relayer without waiting for delivery.
 Startup and 1-second recovery checks find missed wakes and due retries. Connected
-clients receive the complete trade through [SSE](trade-stream-api.md); browser
-cache integration remains pending. Creation reuses the catalog lookup for its response.
+clients receive the complete trade through [SSE](trade-stream-api.md) and merge it
+into the version-aware browser cache. Creation reuses the catalog lookup for its response.
 
 ## Errors
 
