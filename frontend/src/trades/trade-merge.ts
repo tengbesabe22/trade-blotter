@@ -8,9 +8,12 @@ export function isLiveFirstPage(request: TradeListQuery): boolean {
   return !request.after && request.sortBy === 'tradeDate' && request.sortDirection === 'desc';
 }
 
-// Mirror the two exact-match server filters when applying full SSE trade payloads.
+// Mirror the exact-match server filters when applying full SSE trade payloads.
 export function matchesTradeFilters(trade: Trade, request: TradeListQuery): boolean {
-  return (!request.status || trade.status === request.status) && (!request.side || trade.side === request.side);
+  return (!request.symbol || trade.symbol === request.symbol) &&
+    (!request.traderId || trade.ownerId === request.traderId) &&
+    (!request.status || trade.status === request.status) &&
+    (!request.side || trade.side === request.side);
 }
 
 // Choose a merge strategy without mixing row updates with pagination rules.

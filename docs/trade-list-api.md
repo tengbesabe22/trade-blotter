@@ -100,9 +100,10 @@ workspace lifetime; a new workspace/login gets a new client. Pending requests ab
 when the last consumer leaves. There is no polling, focus/reconnect reload or
 automatic retry; callers receive loading/error state and an explicit `refetch`.
 
-Create trade now mounts the hook for traders and searches instruments locally.
-Ticker/trader filter consumers remain next. The first consumer fetches on workspace
-entry/full browser refresh; filtering, sorting, pagination and SSE reuse the result. No server catalogue cache is added. `Cache-Control: no-store`
+Create trade and the ticker/trader filters now share the hook. Both signed-in roles
+can use the filters; Create trade remains trader-only. The first consumer fetches on
+workspace entry/full browser refresh. Filtering, sorting, pagination and SSE reuse
+the result without another lookup. No server catalogue cache is added. `Cache-Control: no-store`
 prevents HTTP caching; the in-memory application cache is separate.
 
 **Scaling path:** returning both complete lists is scoped to the small reference
@@ -121,10 +122,17 @@ trade DTOs, mapping and repository remain in the parent directory.
 ## Frontend and verification
 
 The UI provides server sort controls, 25/50/100/200 rows per page, Previous/Next,
-First page, refresh, and Status/Side filters. Each filter offers All or one exact
-selection; combined selections use AND across the full server dataset. Changing a
-filter returns to page one; sorting/page-size changes preserve both filters. Other
-filter controls remain pending; the API supports the table above.
+First page, refresh, and Ticker/Trader/Status/Side filters. Each offers All or one
+exact selection; combined selections use AND across the full server dataset.
+Ticker shows symbol/company name; Trader shows display names and sends account IDs.
+Options come from the complete reference lookup rather than the loaded trade page.
+Loading/failure disables only the ticker/trader dropdowns; errors offer an explicit
+retry and expired sessions use the existing sign-in callback. Empty lists retain All. Changing a
+filter returns to page one; sorting/page-size changes preserve all filters. Clear
+filters resets all four selections together and returns to page one while preserving
+sorting, page size and the Create trade draft. It is disabled when no filters are
+active and remains usable if the options lookup fails. Other filter controls remain
+pending; the API supports the table above.
 AG Grid renders the returned page without locally reordering it. TanStack Query
 keys include the active request and cancel obsolete fetches; inactive pages are released.
 During Next/Previous loading, the previous rows stay visible so the grid remains
@@ -133,7 +141,7 @@ navigation stays disabled until the requested page supplies its own cursor. Filt
 changes show loading instead of retaining rows from a different selection. Empty
 filtered results say No matching trades.
 
-SSE uses the same Status/Side rules: resolve versions, filter, then limit. A visible
+SSE uses the same ticker/trader/Status/Side rules: resolve versions, filter, then limit. A visible
 row leaving the selection is removed immediately and invalidates the page cursor.
 Nearby exits batch for 100 ms before one current-page background read. It uses the
 selected limit (maximum 200), merges newer buffered events, and does not renew idle

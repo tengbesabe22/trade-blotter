@@ -144,3 +144,26 @@ test('a Side amendment removes a BUY from a BUY-only page without accepting a st
   assert.deepEqual(result.trades, []);
   assert.equal(result.needsRefill, true);
 });
+
+
+test('live ticker, trader, Status and Side filters combine with AND using owner ID', () => {
+  const matching = { ...newer, symbol: 'MSFT', side: 'SELL' as const };
+  const unrelated = [
+    { ...matching, id: sampleTrade.id, symbol: 'AAPL' },
+    { ...matching, id: 'f1550000-0000-4000-8000-000000100004', ownerId: 'd197282d-99ca-4260-833a-702f97d1cba1', trader: matching.trader },
+    { ...matching, id: 'f1550000-0000-4000-8000-000000100005', status: 'CANCELLED' as const },
+    { ...matching, id: 'f1550000-0000-4000-8000-000000100006', side: 'BUY' as const },
+  ];
+  const result = mergeLiveTradePage(tradePage([]), [matching, ...unrelated], {
+    ...defaultTradeListQuery, symbol: 'MSFT', traderId: sampleTrade.ownerId, status: 'ACTIVE', side: 'SELL',
+  });
+  assert.deepEqual(result.trades, [matching]);
+});
+
+test('unrelated ticker/trader events do not create notices on older pages', () => {
+  const result = mergeLiveTradePage(tradePage([]), [sampleTrade], {
+    ...defaultTradeListQuery, symbol: 'MSFT', traderId: 'd197282d-99ca-4260-833a-702f97d1cba1', after: 'older',
+  });
+  assert.deepEqual(result.trades, []);
+  assert.equal(result.hasNewTrades, false);
+});

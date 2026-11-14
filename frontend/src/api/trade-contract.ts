@@ -24,6 +24,8 @@ export const tradeListQuerySchema = z.strictObject({
   limit: z.number().int().min(1).max(200),
   sortBy: z.enum(['tradeDate', 'symbol', 'trader', 'quantity', 'price', 'status']),
   sortDirection: z.enum(['asc', 'desc']),
+  symbol: z.string().trim().toUpperCase().min(1).max(12).optional(),
+  traderId: z.uuid().optional(),
   status: z.enum(['ACTIVE', 'CANCELLED']).optional(),
   side: z.enum(['BUY', 'SELL']).optional(),
   after: z.string().min(1).max(2048).optional(),

@@ -6,7 +6,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { TradesPage } from '../src/trades/TradesPage';
 import type { LiveTradePage } from '../src/trades/trade-merge';
 import type { Trade } from '../src/api/trade-contract';
-import { signedInTrader, sampleTrade, cancelledTrade, tradePage } from './trade-fixtures';
+import { signedInTrader, sampleTrade, cancelledTrade, tradePage, tradeOptions } from './trade-fixtures';
 
 const dom = new JSDOM('<!doctype html><html><body></body></html>', {
   url: 'http://localhost:5173', pretendToBeVisual: true,
@@ -54,6 +54,7 @@ function enterReason(value = ' Duplicate booking. ') {
 function showWorkspace(t: TestContext, transport: typeof fetch, role: 'TRADER' | 'READ_ONLY' = 'TRADER') {
   const fetchMock = t.mock.method(globalThis, 'fetch', transport);
   const client = new QueryClient();
+  client.setQueryData(['trade-options'], tradeOptions);
   render(<QueryClientProvider client={client}>
     <TradesPage user={{ ...signedInTrader, role }} onSessionExpired={() => {}} />
   </QueryClientProvider>);

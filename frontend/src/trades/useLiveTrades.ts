@@ -35,7 +35,10 @@ export function useLiveTrades(request: TradeListQuery, savedTrade: Trade | null 
     placeholderData: (previous, previousQuery) => {
       const previousRequest = previousQuery?.queryKey[1] as TradeListQuery | undefined;
       // Keep paging smooth, but do not show rows from a different filter selection.
-      return previousRequest?.status === request.status && previousRequest?.side === request.side ? previous : undefined;
+      const sameFilters = previousRequest?.symbol === request.symbol &&
+        previousRequest?.traderId === request.traderId &&
+        previousRequest?.status === request.status && previousRequest?.side === request.side;
+      return sameFilters ? previous : undefined;
     },
     // Wait for ready, or allow HTTP-only fallback when streaming is unavailable.
     enabled: streamStatus === 'connected' || streamStatus === 'unavailable',

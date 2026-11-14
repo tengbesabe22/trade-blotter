@@ -320,8 +320,9 @@ test('a trader creates through the workspace and the current page refreshes afte
     return Response.json(tradePage(created ? [sampleTrade] : []));
   });
   await screen.findByText('No trades yet');
-  fireEvent.change(screen.getByLabelText('Ticker'), { target: { value: 'apple' } });
-  fireEvent.click(screen.getByRole('option', { name: /AAPL/ }));
+  const creation = within(screen.getByRole('region', { name: 'Create a trade' }));
+  fireEvent.change(creation.getByLabelText('Ticker'), { target: { value: 'apple' } });
+  fireEvent.click(creation.getByRole('option', { name: /AAPL/ }));
   for (const [label, value] of [['Quantity', '100'], ['Price (USD)', '227.45']]) {
     fireEvent.change(screen.getByLabelText(label!), { target: { value } });
   }
@@ -335,7 +336,7 @@ test('a trader creates through the workspace and the current page refreshes afte
 test('the reviewer workspace does not offer trade creation', async (t) => {
   showTrades(t, async () => Response.json(tradePage()), 'READ_ONLY');
   await screen.findByText('No trades yet');
-  assert.equal(screen.queryByLabelText('Ticker') === null, true);
+  assert.equal(screen.queryByRole('region', { name: 'Create a trade' }) === null, true);
   assert.equal(screen.queryByRole('button', { name: 'Create trade' }) === null, true);
   assert.ok(within(screen.getByRole('complementary', { name: 'Trade controls' })).getByLabelText('Sort by'));
 });
@@ -424,4 +425,88 @@ test('Status and Side filter all server results, reset pagination and survive so
   assert.equal(urls.at(-1)?.searchParams.get('side'), 'SELL');
   fireEvent.change(controls.getByLabelText('Side'), { target: { value: '' } });
   await waitFor(() => assert.equal(urls.at(-1)?.searchParams.has('side'), false));
+});
+
+
+for (const role of ['TRADER', 'READ_ONLY']) {
+  test(`${role} filters by ticker/trader using cached complete options and preserves all selections`, async (t) => {
+    const urls: URL[] = [];
+    const mock = showTrades(t, async (input) => {
+      const url = new URL(String(input), 'http://localhost');
+      urls.push(url);
+      return Response.json(tradePage(url.searchParams.has('symbol') || url.searchParams.has('traderId') ? [] : [sampleTrade], { nextCursor: 'next' }));
+    }, role);
+    await screen.findByText('AAPL');
+    const controls = within(screen.getByRole('region', { name: 'Sort and filter' }));
+    await waitFor(() => assert.equal(controls.getByRole('combobox', { name: 'Ticker filter' }).hasAttribute('disabled'), false));
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    await waitFor(() => assert.equal(urls.at(-1)?.searchParams.get('after'), 'next'));
+    fireEvent.change(controls.getByRole('combobox', { name: 'Ticker filter' }), { target: { value: 'MSFT' } });
+    await screen.findByText('No matching trades');
+    assert.equal(urls.at(-1)?.searchParams.get('symbol'), 'MSFT');
+    assert.equal(urls.at(-1)?.searchParams.has('after'), false);
+    assert.equal(screen.getByRole('button', { name: 'Previous' }).hasAttribute('disabled'), true);
+    fireEvent.change(controls.getByRole('combobox', { name: 'Trader filter' }), { target: { value: signedInTrader.id } });
+    await waitFor(() => assert.equal(urls.at(-1)?.searchParams.get('traderId'), signedInTrader.id));
+    fireEvent.change(controls.getByLabelText('Status'), { target: { value: 'ACTIVE' } });
+    fireEvent.change(controls.getByLabelText('Side'), { target: { value: 'BUY' } });
+    fireEvent.change(controls.getByLabelText('Sort by'), { target: { value: 'price' } });
+    fireEvent.change(controls.getByLabelText('Rows per page'), { target: { value: '25' } });
+    await waitFor(() => assert.equal(urls.at(-1)?.searchParams.get('limit'), '25'));
+    assert.equal(urls.at(-1)?.searchParams.get('symbol'), 'MSFT');
+    assert.equal(urls.at(-1)?.searchParams.get('traderId'), signedInTrader.id);
+    assert.equal(urls.at(-1)?.searchParams.get('status'), 'ACTIVE');
+    assert.equal(urls.at(-1)?.searchParams.get('side'), 'BUY');
+    fireEvent.change(controls.getByRole('combobox', { name: 'Ticker filter' }), { target: { value: '' } });
+    await waitFor(() => assert.equal(urls.at(-1)?.searchParams.has('symbol'), false));
+    assert.equal(urls.at(-1)?.searchParams.get('traderId'), signedInTrader.id);
+    fireEvent.change(controls.getByRole('combobox', { name: 'Trader filter' }), { target: { value: '' } });
+    await screen.findByText('AAPL');
+    assert.equal(urls.at(-1)?.searchParams.has('traderId'), false);
+    assert.equal(mock.mock.calls.filter((call) => call.arguments[0] === '/api/trades/filter-options').length, 1);
+  });
+}
+
+test('Clear filters makes one unfiltered page-one request while preserving sorting, page size and the Create draft', async (t) => {
+  const urls: URL[] = [];
+  const mock = showTrades(t, async (input) => {
+    const url = new URL(String(input), 'http://localhost');
+    urls.push(url);
+    return Response.json(tradePage([{
+      ...sampleTrade,
+      symbol: url.searchParams.get('symbol') ?? sampleTrade.symbol,
+      ownerId: url.searchParams.get('traderId') ?? sampleTrade.ownerId,
+      status: url.searchParams.get('status') === 'CANCELLED' ? 'CANCELLED' : 'ACTIVE',
+      side: url.searchParams.get('side') === 'SELL' ? 'SELL' : 'BUY',
+    }], { nextCursor: 'next' }));
+  });
+  await screen.findByText('AAPL');
+  const controls = within(screen.getByRole('region', { name: 'Sort and filter' }));
+  const creation = within(screen.getByRole('region', { name: 'Create a trade' }));
+  fireEvent.change(creation.getByLabelText('Quantity'), { target: { value: '123' } });
+  await waitFor(() => assert.equal(controls.getByRole('combobox', { name: 'Ticker filter' }).hasAttribute('disabled'), false));
+  fireEvent.change(controls.getByRole('combobox', { name: 'Ticker filter' }), { target: { value: 'MSFT' } });
+  fireEvent.change(controls.getByRole('combobox', { name: 'Trader filter' }), { target: { value: signedInTrader.id } });
+  fireEvent.change(controls.getByLabelText('Status'), { target: { value: 'CANCELLED' } });
+  fireEvent.change(controls.getByLabelText('Side'), { target: { value: 'SELL' } });
+  fireEvent.change(controls.getByLabelText('Sort by'), { target: { value: 'price' } });
+  fireEvent.change(controls.getByLabelText('Sort direction'), { target: { value: 'asc' } });
+  fireEvent.change(controls.getByLabelText('Rows per page'), { target: { value: '25' } });
+  await waitFor(() => assert.equal(screen.getByRole('button', { name: 'Next' }).hasAttribute('disabled'), false));
+  fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+  await waitFor(() => assert.equal(urls.at(-1)?.searchParams.get('after'), 'next'));
+  const requestsBeforeClear = urls.length;
+  fireEvent.click(controls.getByRole('button', { name: 'Clear filters' }));
+  await screen.findByText('AAPL');
+  assert.equal(urls.length, requestsBeforeClear + 1);
+  const query = urls.at(-1)!.searchParams;
+  for (const name of ['symbol', 'traderId', 'status', 'side', 'after']) assert.equal(query.has(name), false);
+  assert.equal(query.get('sortBy'), 'price');
+  assert.equal(query.get('sortDirection'), 'asc');
+  assert.equal(query.get('limit'), '25');
+  for (const name of ['Ticker filter', 'Trader filter']) assert.equal((controls.getByRole('combobox', { name }) as HTMLSelectElement).value, '');
+  for (const name of ['Status', 'Side']) assert.equal((controls.getByLabelText(name) as HTMLSelectElement).value, '');
+  assert.equal(screen.getByRole('button', { name: 'Previous' }).hasAttribute('disabled'), true);
+  assert.equal((creation.getByLabelText('Quantity') as HTMLInputElement).value, '123');
+  assert.equal(mock.mock.calls.filter((call) => call.arguments[0] === '/api/trades/filter-options').length, 1);
 });

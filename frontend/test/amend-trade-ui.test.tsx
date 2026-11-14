@@ -6,7 +6,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { TradesPage } from '../src/trades/TradesPage';
 import type { LiveTradePage } from '../src/trades/trade-merge';
 import type { Trade } from '../src/api/trade-contract';
-import { signedInTrader, sampleTrade, cancelledTrade, tradePage } from './trade-fixtures';
+import { signedInTrader, sampleTrade, cancelledTrade, tradePage, tradeOptions } from './trade-fixtures';
 
 const dom = new JSDOM('<!doctype html><html><body></body></html>', {
   url: 'http://localhost:5173', pretendToBeVisual: true,
@@ -23,7 +23,7 @@ Object.defineProperties(globalThis, {
   cancelAnimationFrame: { configurable: true, value: dom.window.cancelAnimationFrame.bind(dom.window) },
   IS_REACT_ACT_ENVIRONMENT: { configurable: true, writable: true, value: true },
 });
-const { render, screen, fireEvent, act, cleanup, waitFor } = await import('@testing-library/react');
+const { render, screen, fireEvent, act, cleanup, waitFor, within } = await import('@testing-library/react');
 afterEach(() => cleanup());
 after(() => dom.window.close());
 
@@ -54,6 +54,7 @@ function editPrice(value = '228.5') {
 function showWorkspace(t: TestContext, transport: typeof fetch, role: 'TRADER' | 'READ_ONLY' = 'TRADER') {
   const fetchMock = t.mock.method(globalThis, 'fetch', transport);
   const client = new QueryClient();
+  client.setQueryData(['trade-options'], tradeOptions);
   render(<QueryClientProvider client={client}>
     <TradesPage user={{ ...signedInTrader, role }} onSessionExpired={() => {}} />
   </QueryClientProvider>);
@@ -74,7 +75,7 @@ test('only own ACTIVE rows offer Amend, opening the selected trade in the right-
   fireEvent.click(button);
   const form = await screen.findByRole('form', { name: 'Amend trade' });
   assert.equal((screen.getByLabelText('Price (USD)') as HTMLInputElement).value, '227.4500');
-  assert.equal(screen.queryByLabelText('Ticker'), null);
+  assert.equal(within(form).queryByLabelText('Ticker'), null);
   assert.equal(screen.getByRole('complementary', { name: 'Trade controls' }).contains(form), true);
   assert.equal(screen.getByRole('region', { name: 'Trades' }).contains(form), false);
   fireEvent.click(screen.getByRole('button', { name: 'Discard changes' }));

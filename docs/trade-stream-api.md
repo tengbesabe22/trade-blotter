@@ -125,7 +125,8 @@ A live change that invalidates a full page cursor clears it; Refresh obtains a n
 cursor. The first page still suppresses the new-trade notice. Broader automatic
 reconciliation and popup notifications are deferred.
 
-Status and Side filters apply to HTTP pages and SSE payloads. Versions are resolved
+Ticker, trader, Status and Side filters apply to HTTP pages and SSE payloads.
+Trader matching uses immutable owner ID, not display name. Versions are resolved
 before filtering/limiting, so stale events cannot restore an excluded row. A visible
 row leaving the selection disappears immediately and schedules a page-sized refill
 after a 100 ms batch window. The read is passive and merges newer buffered events.

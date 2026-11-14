@@ -126,7 +126,7 @@ test('logout waits for the server before returning to a fresh login form', async
   fireEvent.click(screen.getByRole('button', { name: 'Account for JSMITH' }));
   fireEvent.click(screen.getByRole('button', { name: 'Sign out' }));
   assert.equal(screen.getByRole('button', { name: 'Signing out…' }).hasAttribute('disabled'), true);
-  assert.ok(screen.getByText('JSMITH'));
+  assert.ok(screen.getByRole('region', { name: 'Your account' }).textContent?.includes('JSMITH'));
 
   await act(async () => { resolveLogout(new Response(null, { status: 204 })); });
   const email = await screen.findByLabelText('Email');
@@ -144,7 +144,7 @@ test('failed logout keeps the account visible and offers another attempt', async
   fireEvent.click(screen.getByRole('button', { name: 'Sign out' }));
 
   assert.equal((await screen.findByRole('alert')).textContent, 'Please try signing out again.');
-  assert.ok(screen.getByText('JSMITH'));
+  assert.ok(screen.getByRole('region', { name: 'Your account' }).textContent?.includes('JSMITH'));
   assert.equal(screen.getByRole('button', { name: 'Sign out' }).hasAttribute('disabled'), false);
 });
 

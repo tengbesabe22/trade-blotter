@@ -40,10 +40,10 @@ export function TradesPage({ user, onSessionExpired, tradePanel, createSubmissio
   const [cursorHistory, setCursorHistory] = useState<(string | null)[]>([null]);
   const request = { ...queryOptions, after: cursorHistory.at(-1) ?? undefined };
   const isFirstPage = cursorHistory.length === 1;
-  const hasFilters = Boolean(queryOptions.status || queryOptions.side);
+  const hasFilters = Boolean(queryOptions.symbol || queryOptions.traderId || queryOptions.status || queryOptions.side);
   const emptyTitle = hasFilters ? 'No matching trades' : 'No trades yet';
   const emptyDescription = hasFilters
-    ? 'Try changing the Status or Side filters.'
+    ? 'Try changing your filters.'
     : 'Trades will appear here after they are recorded. Use Refresh trades to check again.';
   const { query, streamStatus, markUserRequest } = useLiveTrades(request, savedTrade);
 
@@ -198,7 +198,7 @@ export function TradesPage({ user, onSessionExpired, tradePanel, createSubmissio
       </section>
       {!sessionExpired && (
         <aside aria-label="Trade controls" className="flex min-w-0 flex-col gap-4">
-          <TradeListControls query={queryOptions} onChange={changeQuery} />
+          <TradeListControls query={queryOptions} onChange={changeQuery} onSessionExpired={onSessionExpired} />
           {/* Keep creation mounted so switching panels never discards its draft. */}
           <div hidden={selectedAction !== null} className={selectedAction ? 'hidden' : 'flex flex-1 flex-col'}>
             {tradePanel}

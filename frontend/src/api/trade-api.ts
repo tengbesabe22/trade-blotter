@@ -93,6 +93,8 @@ export const tradeApi = {
       limit: String(request.limit), sortBy: request.sortBy, sortDirection: request.sortDirection,
     });
     if (request.after) parameters.set('after', request.after);
+    if (request.symbol) parameters.set('symbol', request.symbol);
+    if (request.traderId) parameters.set('traderId', request.traderId);
     if (request.status) parameters.set('status', request.status);
     if (request.side) parameters.set('side', request.side);
 

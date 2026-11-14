@@ -115,3 +115,21 @@ for (const field of ['status', 'side'] as const) {
     assert.equal(mock.mock.callCount(), 0);
   });
 }
+
+
+test('listing serializes ticker and trader ID alongside Status and Side', async (t) => {
+  const mock = stubResponse(t, Response.json(tradePage()));
+  await tradeApi.list({ ...defaultTradeListQuery, symbol: ' msft ', traderId: sampleTrade.ownerId,
+    status: 'ACTIVE', side: 'BUY' });
+  const url = new URL(String(mock.mock.calls[0]!.arguments[0]), 'http://localhost');
+  assert.equal(url.searchParams.get('symbol'), 'MSFT');
+  assert.equal(url.searchParams.get('traderId'), sampleTrade.ownerId);
+  assert.equal(url.searchParams.get('status'), 'ACTIVE');
+  assert.equal(url.searchParams.get('side'), 'BUY');
+});
+
+test('an invalid trader ID is rejected before listing fetches', async (t) => {
+  const mock = stubResponse(t, Response.json(tradePage()));
+  await assert.rejects(tradeApi.list({ ...defaultTradeListQuery, traderId: 'JSMITH' }));
+  assert.equal(mock.mock.callCount(), 0);
+});

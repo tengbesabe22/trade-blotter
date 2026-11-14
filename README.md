@@ -11,7 +11,8 @@ ownership/version checks, immediate cache updates and SSE delivery.
 **Next:** remaining filter controls, broader live-page reconciliation, and deployment.
 The frontend supports login, session restoration, logout, and a read-only trade
 grid with server sorting, Previous/Next pagination, manual refresh, and loading/empty/error states.
-Status and Side filters run on the server and also apply to incoming live events.
+Ticker, Trader, Status and Side filters run on the server and also apply to live events.
+Ticker/trader options share the same cached lookup used by Create trade.
 A row leaving the selection disappears immediately; a batched page fetch fills the gap.
 The desktop workspace places sorting/filter controls and the default Create trade form
 to the right of the grid. Amend/Cancel temporarily replace creation in that panel,

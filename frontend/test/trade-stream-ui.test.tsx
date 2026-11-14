@@ -5,7 +5,7 @@ import { StrictMode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { TradesPage } from '../src/trades/TradesPage';
 import type { LiveTradePage } from '../src/trades/trade-merge';
-import { signedInTrader, sampleTrade, cancelledTrade, tradePage } from './trade-fixtures';
+import { signedInTrader, sampleTrade, cancelledTrade, tradePage, tradeOptions } from './trade-fixtures';
 
 const dom = new JSDOM('<!doctype html><html><body></body></html>', {
   url: 'http://localhost:5173', pretendToBeVisual: true,
@@ -61,6 +61,7 @@ const change = {
 
 function setup(t: TestContext, transport: typeof fetch = async () => Response.json(tradePage([sampleTrade]))) {
   const client = new QueryClient();
+  client.setQueryData(['trade-options'], tradeOptions);
   const fetchMock = t.mock.method(globalThis, 'fetch', transport);
   const view = render(<QueryClientProvider client={client}><TradesPage user={{ ...signedInTrader, role: 'TRADER' }} onSessionExpired={() => {}} /></QueryClientProvider>);
   const source = FakeEventSource.sources.at(-1);
@@ -178,6 +179,7 @@ test('a terminal stream error offers manual refresh instead of claiming automati
 
 test('Strict Mode leaves only one active connection and ignores the obsolete connection', async (t) => {
   const client = new QueryClient();
+  client.setQueryData(['trade-options'], tradeOptions);
   const fetchMock = t.mock.method(globalThis, 'fetch', async () => Response.json(tradePage([sampleTrade])));
   const view = render(
     <StrictMode>
@@ -390,4 +392,42 @@ test('changing filters cancels a queued refill for the old selection', async (t)
   await new Promise((resolve) => setTimeout(resolve, 200));
   assert.equal(h.fetchMock.mock.callCount(), 3);
   assert.equal(h.page()?.trades[0]?.status, 'CANCELLED');
+});
+
+
+test('ticker/trader changes hide previous-filter placeholders and SSE keeps matching versions without another connection', async (t) => {
+  let finish!: (response: Response) => void;
+  const pending = new Promise<Response>((resolve) => { finish = resolve; });
+  const matching = { ...cancelledTrade, status: 'ACTIVE' as const, side: 'BUY' as const, version: 1,
+    ownerId: signedInTrader.id, trader: signedInTrader.displayName, tradeDate: newer.tradeDate };
+  const h = setup(t, async (input) => {
+    const url = new URL(String(input), 'http://localhost');
+    if (url.searchParams.has('traderId')) return Response.json(tradePage([matching]));
+    if (url.searchParams.has('symbol')) return pending;
+    return Response.json(tradePage([sampleTrade]));
+  });
+  await act(async () => { h.source.emit('stream.ready', ready); });
+  await screen.findByText('AAPL');
+  const controls = within(screen.getByRole('region', { name: 'Sort and filter' }));
+  fireEvent.change(controls.getByRole('combobox', { name: 'Ticker filter' }), { target: { value: 'MSFT' } });
+  await waitFor(() => assert.equal(h.fetchMock.mock.callCount(), 2));
+  assert.equal(screen.queryByText('AAPL') === null, true);
+  await act(async () => {
+    h.source.emit('trade.changed', { ...change, trade: { ...matching, price: '450.0000', version: 2 } });
+    finish(Response.json(tradePage([])));
+  });
+  await screen.findByText('MSFT');
+  fireEvent.change(controls.getByRole('combobox', { name: 'Trader filter' }), { target: { value: signedInTrader.id } });
+  await waitFor(() => assert.equal(h.fetchMock.mock.callCount(), 3));
+  await waitFor(() => assert.equal(screen.getByRole('button', { name: 'Refresh trades' }).hasAttribute('disabled'), false));
+  await act(async () => {
+    h.source.emit('trade.changed', { ...change, trade: { ...matching, id: 'f1550000-0000-4000-8000-000000100004', ownerId: sampleTrade.ownerId } });
+    h.source.emit('trade.changed', { ...change, trade: { ...matching, id: 'f1550000-0000-4000-8000-000000100005', symbol: 'TSLA' } });
+    h.source.emit('trade.changed', { ...change, trade: { ...matching, id: 'f1550000-0000-4000-8000-000000100006' } });
+  });
+  assert.equal(h.page()?.trades.length, 2);
+  assert.ok(h.page()?.trades.every((trade) => trade.symbol === 'MSFT' && trade.ownerId === signedInTrader.id));
+  assert.equal(h.page()?.trades.find((trade) => trade.id === matching.id)?.price, '450.0000');
+  assert.equal(h.fetchMock.mock.callCount(), 3);
+  assert.equal(FakeEventSource.sources.length, 1);
 });
