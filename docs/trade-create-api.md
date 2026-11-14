@@ -5,7 +5,7 @@
 
 ## Frontend flow
 
-Traders use the **Create trade** panel, enter a seeded ticker and trade details, then submit.
+Traders use the **Create trade** panel, select an instrument and enter trade details, then submit.
 Execution time is entered in UTC; quantity and price stay decimal strings. The form
 validates fields before POST and displays backend validation errors without losing input.
 Reviewers have no create button; the backend also enforces their read-only role.
@@ -19,7 +19,7 @@ or malformed success response, freeze the submitted fields and offer **Retry tra
 with the same key/body. This pending attempt stays in component memory; it is not
 restored after a browser reload. A definitive validation rejection permits editing.
 
-## Standalone instrument selector
+## Instrument selection
 
 `InstrumentSelector.tsx` is implemented independently of the form and cache. It
 accepts an instrument list, controlled selected symbol, selection callback, disabled
@@ -29,8 +29,15 @@ commits its ticker. Arrows highlight, Enter selects without form submission, Esc
 or Tab dismiss, and blur discards an uncommitted search. Keyboard behavior follows
 the [WAI combobox pattern](https://www.w3.org/WAI/ARIA/apg/patterns/combobox/).
 
-Create trade still uses its existing text field. Connecting this selector to
-`useTradeOptions()` and the form is the next slice; no new lookup call is mounted yet.
+Create trade now loads this list through `useTradeOptions()`. Search runs locally
+without additional requests. Loading, failed and empty lookups block new trades;
+failures/empty lists offer **Retry instruments** without clearing other fields.
+An expired lookup session uses the existing sign-in flow. The form verifies the
+committed symbol belongs to the loaded catalogue before starting a new request.
+Reset/success clear both the selected value and the selector's local search state.
+Pending/uncertain submissions disable the selector. **Retry trade** still uses the
+saved body/key even if the catalogue later becomes unavailable; lookup rules apply
+only to new submissions. The server continues validating instrument existence.
 
 ## Request
 

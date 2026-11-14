@@ -16,7 +16,8 @@ A row leaving the selection disappears immediately; a batched page fetch fills t
 The desktop workspace places sorting/filter controls and the default Create trade form
 to the right of the grid. Amend/Cancel temporarily replace creation in that panel,
 preserving its draft. Pending or unconfirmed creation blocks switching actions.
-Successful creation refreshes the current page.
+Create trade searches a cached instrument list by ticker/company name and requires
+a valid selection. Successful creation refreshes the current page.
 SSE inserts creation events directly into the default first-page cache. Other pages
 and sorts retain their position; the new-trade notice appears only on older pages.
 If a live insert changes a full page boundary, Refresh trades obtains a fresh cursor

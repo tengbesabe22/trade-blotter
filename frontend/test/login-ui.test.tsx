@@ -3,7 +3,7 @@ import test, { after, afterEach, type TestContext } from 'node:test';
 import { JSDOM } from 'jsdom';
 import { StrictMode } from 'react';
 import App from '../src/App';
-import { tradePage } from './trade-fixtures';
+import { tradePage, tradeOptions } from './trade-fixtures';
 
 const dom = new JSDOM('<!doctype html><html><body></body></html>', {
   url: 'http://localhost:5173',
@@ -25,9 +25,10 @@ const trader = { id: 'user-1', displayName: 'JSMITH', role: 'TRADER' };
 const credentials = { email: 'jsmith@example.com', password: ' Password with spaces ' };
 
 function withEmptyTrades(implementation: typeof fetch): typeof fetch {
-  return async (url, options) => String(url).startsWith('/api/trades')
-    ? Response.json(tradePage())
-    : implementation(url, options);
+  return async (url, options) => {
+    if (url === '/api/trades/filter-options') return Response.json(tradeOptions);
+    return String(url).startsWith('/api/trades') ? Response.json(tradePage()) : implementation(url, options);
+  };
 }
 
 async function showLogin(t: TestContext, implementation: typeof fetch) {

@@ -3,6 +3,8 @@ import { ApiError } from '../api/api-client';
 import { tradeApi } from '../api/trade-api';
 import { createTradeRequestSchema, type CreateTradeRequest } from '../api/trade-create-contract';
 import type { Trade } from '../api/trade-contract';
+import { InstrumentSelector } from './InstrumentSelector';
+import { useTradeOptions } from './useTradeOptions';
 
 type CreateTradeFormProps = {
   onCreated: (trade: Trade) => void;
@@ -25,6 +27,12 @@ const inputClass = 'mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-w
 const buttonClass = 'min-h-11 rounded-lg px-4 py-2 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700 disabled:opacity-50';
 
 export function CreateTradeForm({ onCreated, onSessionExpired, onSubmissionLockChange }: CreateTradeFormProps) {
+  const options = useTradeOptions();
+  const instruments = options.data?.instruments ?? [];
+  const lookupExpired = options.error instanceof ApiError && options.error.status === 401;
+  const lookupEmpty = options.isSuccess && instruments.length === 0;
+  const canSelectInstrument = options.isSuccess && instruments.length > 0;
+  const [selectorVersion, setSelectorVersion] = useState(0);
   const [values, setValues] = useState(emptyForm);
   const [errors, setErrors] = useState<Partial<Record<keyof FormValues, string>>>({});
   const [message, setMessage] = useState('');
@@ -40,6 +48,17 @@ export function CreateTradeForm({ onCreated, onSessionExpired, onSubmissionLockC
     onSubmissionLockChange?.(saving || uncertain);
   }, [saving, uncertain, onSubmissionLockChange]);
 
+  useEffect(() => {
+    if (lookupExpired) onSessionExpired();
+  }, [lookupExpired, onSessionExpired]);
+
+  function resetFields() {
+    setValues(emptyForm());
+    setErrors({});
+    // Reset the selector's local search text as well as its committed value.
+    setSelectorVersion((version) => version + 1);
+  }
+
   function update(field: keyof FormValues, value: string) {
     setValues((current) => ({ ...current, [field]: value }));
     setErrors((current) => ({ ...current, [field]: undefined }));
@@ -51,6 +70,13 @@ export function CreateTradeForm({ onCreated, onSessionExpired, onSubmissionLockC
     if (submitting.current) return;
 
     if (!attempt.current) {
+      // Lookup availability gates new trades, never an existing idempotent retry.
+      if (!canSelectInstrument) return;
+      if (!instruments.some((instrument) => instrument.symbol === values.symbol)) {
+        setErrors((current) => ({ ...current, symbol: 'Choose an instrument from the list.' }));
+        return;
+      }
+
       const executionTime = new Date(values.tradeDate + 'Z');
       const validation = createTradeRequestSchema.safeParse({
         ...values,
@@ -78,7 +104,7 @@ export function CreateTradeForm({ onCreated, onSessionExpired, onSubmissionLockC
       attempt.current = null;
       setUncertain(false);
       setSuccess('Trade created: ' + trade.symbol + ' · ' + trade.id);
-      setValues(emptyForm());
+      resetFields();
       onCreated(trade);
     } catch (error) {
       if (error instanceof ApiError && error.status === 401) {
@@ -91,7 +117,7 @@ export function CreateTradeForm({ onCreated, onSessionExpired, onSubmissionLockC
         attempt.current = null;
         setUncertain(false);
         setMessage(error.code === 'UNKNOWN_INSTRUMENT'
-          ? 'Choose a seeded instrument, for example AAPL or MSFT.'
+          ? 'The selected instrument is unavailable. Choose another instrument or reload the page.'
           : error.message);
       } else {
         setUncertain(true);
@@ -110,9 +136,20 @@ export function CreateTradeForm({ onCreated, onSessionExpired, onSubmissionLockC
         <h2 className="text-lg font-semibold text-slate-950">Create trade</h2>
         <p className="mt-1 text-sm text-slate-600">USD equities · Execution time is entered in UTC.</p>
         {message && <p role="alert" className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-800">{message}</p>}
+        {options.isFetching && <p role="status" className="mt-3 text-sm text-slate-600">Loading instruments…</p>}
+        {options.isError && !lookupExpired && <p role="alert" className="mt-3 text-sm text-red-800">Unable to load instruments. Please try again.</p>}
+        {lookupEmpty && <p role="status" className="mt-3 text-sm text-slate-600">No instruments available.</p>}
+        {(options.isError || lookupEmpty) && !lookupExpired && (
+          <button type="button" disabled={options.isFetching || saving || uncertain}
+            onClick={() => { void options.refetch(); }} className={buttonClass + ' mt-2 border border-slate-300'}>Retry instruments</button>
+        )}
         <fieldset disabled={saving || uncertain} className="mt-4 grid gap-4 grid-cols-2">
+          <div className="col-span-2">
+            <InstrumentSelector key={selectorVersion} instruments={instruments} value={values.symbol}
+              onChange={(symbol) => update('symbol', symbol)} error={errors.symbol}
+              disabled={saving || uncertain || !canSelectInstrument} />
+          </div>
           {([
-            ['symbol', 'Ticker', 'text', 'AAPL'],
             ['quantity', 'Quantity', 'text', '100'],
             ['price', 'Price (USD)', 'text', '227.4500'],
             ['tradeDate', 'Execution time (UTC)', 'datetime-local', ''],
@@ -124,7 +161,7 @@ export function CreateTradeForm({ onCreated, onSessionExpired, onSubmissionLockC
               <input className={inputClass} type={type} value={values[field]}
                 placeholder={placeholder} step={type === 'datetime-local' ? '1' : undefined}
                 inputMode={field === 'quantity' || field === 'price' ? 'decimal' : undefined}
-                maxLength={field === 'symbol' ? 12 : field === 'book' ? 64 : field === 'counterparty' ? 120 : 32}
+                maxLength={field === 'book' ? 64 : field === 'counterparty' ? 120 : 32}
                 aria-invalid={Boolean(errors[field])} aria-describedby={errors[field] ? field + '-error' : undefined}
                 onChange={(event) => update(field, event.target.value)} />
               {errors[field] && <span id={field + '-error'} className="mt-1 block text-sm text-red-800">{errors[field]}</span>}
@@ -138,11 +175,11 @@ export function CreateTradeForm({ onCreated, onSessionExpired, onSubmissionLockC
           </label>
         </fieldset>
         <div className="mt-5 flex flex-wrap gap-3">
-          <button type="submit" disabled={saving} className={buttonClass + ' bg-blue-700 text-white hover:bg-blue-800'}>
+          <button type="submit" disabled={saving || (!uncertain && !canSelectInstrument)} className={buttonClass + ' bg-blue-700 text-white hover:bg-blue-800'}>
             {saving ? 'Saving trade…' : uncertain ? 'Retry trade' : 'Create trade'}
           </button>
           <button type="button" disabled={saving || uncertain} className={buttonClass + ' border border-slate-300 text-slate-800'}
-            onClick={() => { setValues(emptyForm()); setErrors({}); setMessage(''); setSuccess(''); }}>
+            onClick={() => { resetFields(); setMessage(''); setSuccess(''); }}>
             Reset form
           </button>
         </div>

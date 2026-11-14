@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test, { after, afterEach, type TestContext } from 'node:test';
 import { JSDOM } from 'jsdom';
 import { TradeWorkspace } from '../src/trades/TradeWorkspace';
-import { signedInTrader, sampleTrade, tradePage } from './trade-fixtures';
+import { signedInTrader, sampleTrade, tradePage, tradeOptions } from './trade-fixtures';
 
 const dom = new JSDOM('<!doctype html><html><body></body></html>', {
   url: 'http://localhost:5173', pretendToBeVisual: true,
@@ -26,14 +26,19 @@ after(() => dom.window.close());
 const owned = { ...sampleTrade, ownerId: signedInTrader.id };
 
 function showWorkspace(t: TestContext, transport: typeof fetch) {
-  const fetchMock = t.mock.method(globalThis, 'fetch', transport);
+  const requests = t.mock.fn(transport);
+  const lookups = t.mock.fn(async () => Response.json(tradeOptions));
+  const fetcher: typeof fetch = (url, options) => url === '/api/trades/filter-options' ? lookups() : requests(url, options);
+  t.mock.method(globalThis, 'fetch', fetcher);
   render(<TradeWorkspace user={{ ...signedInTrader, role: 'TRADER' }} onSignedOut={() => {}} />);
-  return fetchMock;
+  return { requests, lookups };
 }
 
 function createDraft() {
   const panel = screen.getByRole('region', { name: 'Create a trade' });
-  for (const [label, value] of [['Ticker', 'MSFT'], ['Quantity', '321'], ['Price (USD)', '400']]) {
+  fireEvent.change(within(panel).getByLabelText('Ticker'), { target: { value: 'microsoft' } });
+  fireEvent.click(within(panel).getByRole('option', { name: /MSFT/ }));
+  for (const [label, value] of [['Quantity', '321'], ['Price (USD)', '400']]) {
     fireEvent.change(within(panel).getByLabelText(label!), { target: { value } });
   }
   return panel;
@@ -45,7 +50,7 @@ for (const action of ['amend', 'cancel'] as const) {
   const closeName = action === 'amend' ? 'Discard changes' : 'Keep trade';
 
   test(`${action} replaces creation in the sidebar and closing restores its draft`, async (t) => {
-    const mock = showWorkspace(t, async () => Response.json(tradePage([owned])));
+    const h = showWorkspace(t, async () => Response.json(tradePage([owned])));
     const button = await screen.findByRole('button', { name: `${actionName} AAPL trade ${owned.id}` });
     createDraft();
     const grid = screen.getByRole('grid');
@@ -60,11 +65,12 @@ for (const action of ['amend', 'cancel'] as const) {
     assert.equal((within(restored).getByLabelText('Ticker') as HTMLInputElement).value, 'MSFT');
     assert.equal((within(restored).getByLabelText('Quantity') as HTMLInputElement).value, '321');
     assert.equal(screen.getByRole('grid') === grid, true);
-    assert.equal(mock.mock.callCount(), 1);
+    assert.equal(h.requests.mock.callCount(), 1);
+    assert.equal(h.lookups.mock.callCount(), 1);
   });
 
   test(`successful ${action} returns to the saved creation draft without another GET`, async (t) => {
-    const mock = showWorkspace(t, async (_url, options) => options?.method
+    const h = showWorkspace(t, async (_url, options) => options?.method
       ? Response.json({ trade: { ...owned, version: 2,
           ...(action === 'amend' ? { price: '228.5000' } : { status: 'CANCELLED' }),
         } })
@@ -80,7 +86,8 @@ for (const action of ['amend', 'cancel'] as const) {
     const restored = screen.getByRole('region', { name: 'Create a trade' });
     assert.equal((within(restored).getByLabelText('Ticker') as HTMLInputElement).value, 'MSFT');
     assert.equal(screen.queryByRole('form', { name: formName }) === null, true);
-    assert.equal(mock.mock.callCount(), 2);
+    assert.equal(h.requests.mock.callCount(), 2);
+    assert.equal(h.lookups.mock.callCount(), 1);
   });
 }
 

@@ -100,10 +100,9 @@ workspace lifetime; a new workspace/login gets a new client. Pending requests ab
 when the last consumer leaves. There is no polling, focus/reconnect reload or
 automatic retry; callers receive loading/error state and an explicit `refetch`.
 
-The hook is not mounted by the current UI yet. The searchable instrument dropdown
-will be its first consumer, followed by ticker/trader filters. That will fetch on
-workspace entry/full browser refresh and reuse options across filtering, sorting,
-pagination and SSE. No server catalogue cache is added. `Cache-Control: no-store`
+Create trade now mounts the hook for traders and searches instruments locally.
+Ticker/trader filter consumers remain next. The first consumer fetches on workspace
+entry/full browser refresh; filtering, sorting, pagination and SSE reuse the result. No server catalogue cache is added. `Cache-Control: no-store`
 prevents HTTP caching; the in-memory application cache is separate.
 
 **Scaling path:** returning both complete lists is scoped to the small reference

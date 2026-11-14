@@ -53,6 +53,6 @@ export function tradePage(trades: Trade[] = [], pageInfo: {
 
 
 export const tradeOptions = {
-  instruments: [{ symbol: 'AAPL', name: 'Apple Inc.' }],
+  instruments: [{ symbol: 'AAPL', name: 'Apple Inc.' }, { symbol: 'MSFT', name: 'Microsoft Corporation' }],
   traders: [{ id: signedInTrader.id, displayName: signedInTrader.displayName }],
 };

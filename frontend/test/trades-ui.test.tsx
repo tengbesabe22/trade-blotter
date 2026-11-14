@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test, { after, afterEach, type TestContext } from 'node:test';
 import { JSDOM } from 'jsdom';
 import App from '../src/App';
-import { signedInTrader, sampleTrade, cancelledTrade, tradePage } from './trade-fixtures';
+import { signedInTrader, sampleTrade, cancelledTrade, tradePage, tradeOptions } from './trade-fixtures';
 
 const dom = new JSDOM('<!doctype html><html><body></body></html>', {
   url: 'http://localhost:5173',
@@ -32,6 +32,7 @@ function showTrades(t: TestContext, tradeTransport: typeof fetch, role = 'TRADER
       return Response.json({ user: { ...signedInTrader, role } });
     }
 
+    if (url === '/api/trades/filter-options') return Response.json(tradeOptions);
     if (url === '/api/auth/logout') return new Response(null, { status: 204 });
     assert.ok(String(url).startsWith('/api/trades'));
     return tradeTransport(url, options);
@@ -319,7 +320,9 @@ test('a trader creates through the workspace and the current page refreshes afte
     return Response.json(tradePage(created ? [sampleTrade] : []));
   });
   await screen.findByText('No trades yet');
-  for (const [label, value] of [['Ticker', 'AAPL'], ['Quantity', '100'], ['Price (USD)', '227.45']]) {
+  fireEvent.change(screen.getByLabelText('Ticker'), { target: { value: 'apple' } });
+  fireEvent.click(screen.getByRole('option', { name: /AAPL/ }));
+  for (const [label, value] of [['Quantity', '100'], ['Price (USD)', '227.45']]) {
     fireEvent.change(screen.getByLabelText(label!), { target: { value } });
   }
   fireEvent.click(screen.getByRole('button', { name: 'Create trade' }));
