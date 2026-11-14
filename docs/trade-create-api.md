@@ -5,19 +5,32 @@
 
 ## Frontend flow
 
-Traders select **New trade**, enter a seeded ticker and trade details, then submit.
+Traders use the **Create trade** panel, enter a seeded ticker and trade details, then submit.
 Execution time is entered in UTC; quantity and price stay decimal strings. The form
 validates fields before POST and displays backend validation errors without losing input.
 Reviewers have no create button; the backend also enforces their read-only role.
 
 After success, show the trade ID and refresh the current bounded trade page through
 TanStack Query. Sorting and page position are preserved, so the new trade may belong
-outside the visible page. Live updates are a later slice.
+outside the visible page. SSE supplies live changes to connected clients.
 
 Duplicate submission is blocked while saving. For a network failure, server error
 or malformed success response, freeze the submitted fields and offer **Retry trade**
 with the same key/body. This pending attempt stays in component memory; it is not
 restored after a browser reload. A definitive validation rejection permits editing.
+
+## Standalone instrument selector
+
+`InstrumentSelector.tsx` is implemented independently of the form and cache. It
+accepts an instrument list, controlled selected symbol, selection callback, disabled
+state and optional validation error. Search matches ticker/company name without
+case sensitivity. Editing clears a previous selection; only choosing an option
+commits its ticker. Arrows highlight, Enter selects without form submission, Escape
+or Tab dismiss, and blur discards an uncommitted search. Keyboard behavior follows
+the [WAI combobox pattern](https://www.w3.org/WAI/ARIA/apg/patterns/combobox/).
+
+Create trade still uses its existing text field. Connecting this selector to
+`useTradeOptions()` and the form is the next slice; no new lookup call is mounted yet.
 
 ## Request
 
