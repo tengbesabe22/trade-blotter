@@ -93,19 +93,22 @@ export function TradeTable({ trades, user, onAmend, onCancel, actionsDisabled }:
     [user.role, actionColumn]);
 
   return (
-    <div className="h-[min(65svh,36rem)] min-h-72 w-full">
-      <AgGridProvider modules={modules}>
-        <AgGridReact<Trade>
-          theme={theme}
-          rowData={trades}
-          suppressScrollOnNewData
-          columnDefs={tableColumns}
-          defaultColDef={defaultColumn}
-          getRowId={({ data }) => data.id}
-          rowHeight={44}
-          headerHeight={44}
-        />
-      </AgGridProvider>
+    <div className="relative min-h-72 w-full flex-1">
+      {/* Fill the flexible slot without the grid dictating the card height. */}
+      <div className="absolute inset-0">
+        <AgGridProvider modules={modules}>
+          <AgGridReact<Trade>
+            theme={theme}
+            rowData={trades}
+            suppressScrollOnNewData
+            columnDefs={tableColumns}
+            defaultColDef={defaultColumn}
+            getRowId={({ data }) => data.id}
+            rowHeight={44}
+            headerHeight={44}
+          />
+        </AgGridProvider>
+      </div>
     </div>
   );
 }

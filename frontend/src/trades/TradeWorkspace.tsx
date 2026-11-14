@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { CurrentUser } from '../api/auth-contract';
-import { AccountPanel } from '../auth/AccountPanel';
 import { CreateTradeForm } from './CreateTradeForm';
 import { TradesPage } from './TradesPage';
 
@@ -16,16 +15,14 @@ export function TradeWorkspace({ user, onSignedOut }: TradeWorkspaceProps) {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <div className="space-y-6">
-        <AccountPanel user={user} onSignedOut={onSignedOut} />
-        {user.role === 'TRADER' && (
+      <TradesPage user={user} onSessionExpired={onSignedOut}
+        tradePanel={user.role === 'TRADER' && (
           <CreateTradeForm
             onSessionExpired={onSignedOut}
             onCreated={() => { void queryClient.invalidateQueries({ queryKey: ['trades'] }); }}
           />
         )}
-        <TradesPage user={user} onSessionExpired={onSignedOut} />
-      </div>
+      />
     </QueryClientProvider>
   );
 }

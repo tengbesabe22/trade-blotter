@@ -22,7 +22,7 @@ Object.defineProperties(globalThis, {
   IS_REACT_ACT_ENVIRONMENT: { configurable: true, writable: true, value: true },
 });
 
-const { render, screen, fireEvent, act, cleanup, waitFor } = await import('@testing-library/react');
+const { render, screen, fireEvent, act, cleanup, waitFor, within } = await import('@testing-library/react');
 afterEach(() => cleanup());
 after(() => dom.window.close());
 
@@ -64,6 +64,7 @@ test('a reviewer can view populated trade rows with exact quantities and clear d
   assert.ok(screen.getByText('5000.000001'));
   assert.ok(screen.getByText('BUY'));
   assert.ok(screen.getByText('SELL'));
+  fireEvent.click(screen.getByRole('button', { name: 'Account for JSMITH' }));
   assert.ok(screen.getByText('Read-only reviewer'));
   assert.ok(screen.getByText(/Prices in USD/));
   assert.ok(screen.getByText(/Scroll horizontally/));
@@ -162,6 +163,7 @@ test('signing out cancels a pending trade request and a new login starts with an
     return Response.json(tradePage());
   });
   await screen.findByText('Loading trades…');
+  fireEvent.click(screen.getByRole('button', { name: 'Account for JSMITH' }));
   fireEvent.click(screen.getByRole('button', { name: 'Sign out' }));
   await screen.findByLabelText('Email');
   assert.equal(pendingSignal?.aborted, true);
@@ -293,6 +295,18 @@ test('refresh does not add a cursor-history entry', async (t) => {
 });
 
 
+test('sorting and the open create form share a sidebar outside the trade display', async (t) => {
+  showTrades(t, async () => Response.json(tradePage()));
+  await screen.findByText('No trades yet');
+  const sidebar = screen.getByRole('complementary', { name: 'Trade controls' });
+  const tradeDisplay = screen.getByRole('region', { name: 'Trades' });
+  assert.ok(within(sidebar).getByLabelText('Sort by'));
+  assert.ok(within(sidebar).getByRole('button', { name: 'Create trade' }));
+  assert.equal(within(tradeDisplay).queryByLabelText('Sort by') === null, true);
+  assert.equal(within(tradeDisplay).queryByLabelText('Ticker') === null, true);
+  assert.ok(within(tradeDisplay).getByRole('button', { name: 'Refresh trades' }));
+});
+
 test('a trader creates through the workspace and the current page refreshes after success', async (t) => {
   let created = false;
   let reads = 0;
@@ -305,7 +319,6 @@ test('a trader creates through the workspace and the current page refreshes afte
     return Response.json(tradePage(created ? [sampleTrade] : []));
   });
   await screen.findByText('No trades yet');
-  fireEvent.click(screen.getByRole('button', { name: 'New trade' }));
   for (const [label, value] of [['Ticker', 'AAPL'], ['Quantity', '100'], ['Price (USD)', '227.45']]) {
     fireEvent.change(screen.getByLabelText(label!), { target: { value } });
   }
@@ -319,7 +332,9 @@ test('a trader creates through the workspace and the current page refreshes afte
 test('the reviewer workspace does not offer trade creation', async (t) => {
   showTrades(t, async () => Response.json(tradePage()), 'READ_ONLY');
   await screen.findByText('No trades yet');
-  assert.equal(screen.queryByRole('button', { name: 'New trade' }), null);
+  assert.equal(screen.queryByLabelText('Ticker') === null, true);
+  assert.equal(screen.queryByRole('button', { name: 'Create trade' }) === null, true);
+  assert.ok(within(screen.getByRole('complementary', { name: 'Trade controls' })).getByLabelText('Sort by'));
 });
 
 for (const direction of ['Next', 'Previous'] as const) {

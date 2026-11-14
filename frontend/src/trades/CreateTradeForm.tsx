@@ -24,7 +24,6 @@ const inputClass = 'mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-w
 const buttonClass = 'min-h-11 rounded-lg px-4 py-2 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700 disabled:opacity-50';
 
 export function CreateTradeForm({ onCreated, onSessionExpired }: CreateTradeFormProps) {
-  const [open, setOpen] = useState(false);
   const [values, setValues] = useState(emptyForm);
   const [errors, setErrors] = useState<Partial<Record<keyof FormValues, string>>>({});
   const [message, setMessage] = useState('');
@@ -73,7 +72,6 @@ export function CreateTradeForm({ onCreated, onSessionExpired }: CreateTradeForm
       attempt.current = null;
       setUncertain(false);
       setSuccess('Trade created: ' + trade.symbol + ' · ' + trade.id);
-      setOpen(false);
       setValues(emptyForm());
       onCreated(trade);
     } catch (error) {
@@ -100,56 +98,49 @@ export function CreateTradeForm({ onCreated, onSessionExpired }: CreateTradeForm
   }
 
   return (
-    <section aria-label="Create a trade" className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
+    <section aria-label="Create a trade" className="flex-1 rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
       {success && <p role="status" className="mb-3 text-sm text-emerald-800">{success}</p>}
-      {!open ? (
-        <button type="button" className={buttonClass + ' bg-blue-700 text-white hover:bg-blue-800'}
-          onClick={() => { setOpen(true); setSuccess(''); setMessage(''); setErrors({}); }}>
-          New trade
-        </button>
-      ) : (
-        <form onSubmit={(event) => { void submit(event); }} noValidate>
-          <h2 className="text-lg font-semibold text-slate-950">Create trade</h2>
-          <p className="mt-1 text-sm text-slate-600">USD equities · Execution time is entered in UTC.</p>
-          {message && <p role="alert" className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-800">{message}</p>}
-          <fieldset disabled={saving || uncertain} className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {([
-              ['symbol', 'Ticker', 'text', 'AAPL'],
-              ['quantity', 'Quantity', 'text', '100'],
-              ['price', 'Price (USD)', 'text', '227.4500'],
-              ['tradeDate', 'Execution time (UTC)', 'datetime-local', ''],
-              ['book', 'Book', 'text', 'Optional'],
-              ['counterparty', 'Counterparty', 'text', 'Optional'],
-            ] as const).map(([field, label, type, placeholder]) => (
-              <label key={field} className="text-sm font-medium text-slate-700">
-                {label}
-                <input className={inputClass} type={type} value={values[field]}
-                  placeholder={placeholder} step={type === 'datetime-local' ? '1' : undefined}
-                  inputMode={field === 'quantity' || field === 'price' ? 'decimal' : undefined}
-                  maxLength={field === 'symbol' ? 12 : field === 'book' ? 64 : field === 'counterparty' ? 120 : 32}
-                  aria-invalid={Boolean(errors[field])} aria-describedby={errors[field] ? field + '-error' : undefined}
-                  onChange={(event) => update(field, event.target.value)} />
-                {errors[field] && <span id={field + '-error'} className="mt-1 block text-sm text-red-800">{errors[field]}</span>}
-              </label>
-            ))}
-            <label className="text-sm font-medium text-slate-700">
-              Side
-              <select className={inputClass} value={values.side} onChange={(event) => update('side', event.target.value)}>
-                <option value="BUY">Buy</option><option value="SELL">Sell</option>
-              </select>
+      <form onSubmit={(event) => { void submit(event); }} noValidate>
+        <h2 className="text-lg font-semibold text-slate-950">Create trade</h2>
+        <p className="mt-1 text-sm text-slate-600">USD equities · Execution time is entered in UTC.</p>
+        {message && <p role="alert" className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-800">{message}</p>}
+        <fieldset disabled={saving || uncertain} className="mt-4 grid gap-4 grid-cols-2">
+          {([
+            ['symbol', 'Ticker', 'text', 'AAPL'],
+            ['quantity', 'Quantity', 'text', '100'],
+            ['price', 'Price (USD)', 'text', '227.4500'],
+            ['tradeDate', 'Execution time (UTC)', 'datetime-local', ''],
+            ['book', 'Book', 'text', 'Optional'],
+            ['counterparty', 'Counterparty', 'text', 'Optional'],
+          ] as const).map(([field, label, type, placeholder]) => (
+            <label key={field} className={'text-sm font-medium text-slate-700' + (field === 'tradeDate' ? ' col-span-2' : '')}>
+              {label}
+              <input className={inputClass} type={type} value={values[field]}
+                placeholder={placeholder} step={type === 'datetime-local' ? '1' : undefined}
+                inputMode={field === 'quantity' || field === 'price' ? 'decimal' : undefined}
+                maxLength={field === 'symbol' ? 12 : field === 'book' ? 64 : field === 'counterparty' ? 120 : 32}
+                aria-invalid={Boolean(errors[field])} aria-describedby={errors[field] ? field + '-error' : undefined}
+                onChange={(event) => update(field, event.target.value)} />
+              {errors[field] && <span id={field + '-error'} className="mt-1 block text-sm text-red-800">{errors[field]}</span>}
             </label>
-          </fieldset>
-          <div className="mt-5 flex flex-wrap gap-3">
-            <button type="submit" disabled={saving} className={buttonClass + ' bg-blue-700 text-white hover:bg-blue-800'}>
-              {saving ? 'Saving trade…' : uncertain ? 'Retry trade' : 'Create trade'}
-            </button>
-            <button type="button" disabled={saving || uncertain} className={buttonClass + ' border border-slate-300 text-slate-800'}
-              onClick={() => { setOpen(false); setErrors({}); setMessage(''); }}>
-              Cancel
-            </button>
-          </div>
-        </form>
-      )}
+          ))}
+          <label className="text-sm font-medium text-slate-700">
+            Side
+            <select className={inputClass} value={values.side} onChange={(event) => update('side', event.target.value)}>
+              <option value="BUY">Buy</option><option value="SELL">Sell</option>
+            </select>
+          </label>
+        </fieldset>
+        <div className="mt-5 flex flex-wrap gap-3">
+          <button type="submit" disabled={saving} className={buttonClass + ' bg-blue-700 text-white hover:bg-blue-800'}>
+            {saving ? 'Saving trade…' : uncertain ? 'Retry trade' : 'Create trade'}
+          </button>
+          <button type="button" disabled={saving || uncertain} className={buttonClass + ' border border-slate-300 text-slate-800'}
+            onClick={() => { setValues(emptyForm()); setErrors({}); setMessage(''); setSuccess(''); }}>
+            Reset form
+          </button>
+        </div>
+      </form>
     </section>
   );
 }

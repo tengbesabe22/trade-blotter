@@ -22,7 +22,6 @@ async function setup(t: TestContext, transport: typeof fetch) {
   const mock = t.mock.method(globalThis, 'fetch', transport);
   render(<CreateTradeForm onCreated={(trade) => { created.push(trade); }}
     onSessionExpired={() => { expired = true; }} />);
-  fireEvent.click(screen.getByRole('button', { name: 'New trade' }));
   await screen.findByLabelText('Ticker');
   return { mock, created, isExpired: () => expired };
 }
@@ -35,6 +34,16 @@ function fillTrade() {
     fireEvent.change(screen.getByLabelText(label!), { target: { value } });
   }
 }
+
+test('create is immediately available and Reset form clears inputs without closing it', async (t) => {
+  const h = await setup(t, async () => { throw new Error('Unexpected API call.'); });
+  fillTrade();
+  fireEvent.click(screen.getByRole('button', { name: 'Reset form' }));
+  assert.equal((screen.getByLabelText('Ticker') as HTMLInputElement).value, '');
+  assert.equal((screen.getByLabelText('Quantity') as HTMLInputElement).value, '');
+  assert.ok(screen.getByRole('button', { name: 'Create trade' }));
+  assert.equal(h.mock.mock.callCount(), 0);
+});
 
 test('create validates fields before making a request', async (t) => {
   const h = await setup(t, async () => { throw new Error('Unexpected API call.'); });
@@ -60,6 +69,8 @@ test('create submits decimal strings, UTC time and an idempotency key, then repo
     tradeDate: '2026-11-13T09:00:00.000Z', book: 'EQUITIES_US', counterparty: null,
   });
   assert.deepEqual(h.created, [sampleTrade]);
+  assert.equal((screen.getByLabelText('Ticker') as HTMLInputElement).value, '');
+  assert.ok(screen.getByRole('button', { name: 'Create trade' }));
 });
 
 test('pending create prevents duplicate submission', async (t) => {

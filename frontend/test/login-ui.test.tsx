@@ -68,7 +68,7 @@ test('successful login posts entered credentials and shows the account and serve
   const fetchMock = await showLogin(t, async () => Response.json({ user: reviewer }));
   submitLogin();
 
-  await screen.findByText('REVIEWER');
+  fireEvent.click(await screen.findByRole('button', { name: 'Account for REVIEWER' }));
   assert.ok(screen.getByText('Read-only reviewer'));
   assert.equal(screen.queryByLabelText('Password'), null);
   const loginCall = fetchMock.mock.calls.find((call) => call.arguments[0] === '/api/auth/login');
@@ -90,7 +90,7 @@ test('pending login disables submission and does not send a second request', asy
   assert.equal(fetchMock.mock.calls.filter((call) => call.arguments[0] === '/api/auth/login').length, 1);
 
   await act(async () => { resolveResponse(Response.json({ user: trader })); });
-  await screen.findByText('JSMITH');
+  await screen.findByRole('button', { name: 'Account for JSMITH' });
 });
 
 test('rejected credentials show the server message and allow retry without losing the email', async (t) => {
@@ -120,8 +120,9 @@ test('logout waits for the server before returning to a fresh login form', async
     ? pendingLogout
     : Response.json({ user: trader }));
   submitLogin();
-  await screen.findByText('JSMITH');
+  await screen.findByRole('button', { name: 'Account for JSMITH' });
 
+  fireEvent.click(screen.getByRole('button', { name: 'Account for JSMITH' }));
   fireEvent.click(screen.getByRole('button', { name: 'Sign out' }));
   assert.equal(screen.getByRole('button', { name: 'Signing out…' }).hasAttribute('disabled'), true);
   assert.ok(screen.getByText('JSMITH'));
@@ -137,7 +138,8 @@ test('failed logout keeps the account visible and offers another attempt', async
     ? Response.json({ code: 'INTERNAL_ERROR', message: 'Please try signing out again.' }, { status: 500 })
     : Response.json({ user: trader }));
   submitLogin();
-  await screen.findByText('JSMITH');
+  await screen.findByRole('button', { name: 'Account for JSMITH' });
+  fireEvent.click(screen.getByRole('button', { name: 'Account for JSMITH' }));
   fireEvent.click(screen.getByRole('button', { name: 'Sign out' }));
 
   assert.equal((await screen.findByRole('alert')).textContent, 'Please try signing out again.');
@@ -158,7 +160,7 @@ test('session restoration shows a checking state without flashing the login form
   assert.equal(fetchMock.mock.calls[0].arguments[0], '/api/auth/me');
 
   await act(async () => { resolveSession(Response.json({ user: trader })); });
-  await screen.findByText('JSMITH');
+  await screen.findByRole('button', { name: 'Account for JSMITH' });
   assert.equal(screen.queryByLabelText('Password'), null);
 });
 
@@ -166,11 +168,11 @@ test('a fresh app mount restores the account again using me', async (t) => {
   const fakeFetch: typeof fetch = async () => Response.json({ user: trader });
   const fetchMock = t.mock.method(globalThis, 'fetch', withEmptyTrades(fakeFetch));
   const first = render(<App />);
-  await screen.findByText('JSMITH');
+  await screen.findByRole('button', { name: 'Account for JSMITH' });
   first.unmount();
 
   render(<App />);
-  await screen.findByText('JSMITH');
+  await screen.findByRole('button', { name: 'Account for JSMITH' });
 
   assert.equal(fetchMock.mock.calls.filter((call) => call.arguments[0] === '/api/auth/me').length, 2);
 });
@@ -207,7 +209,7 @@ for (const { name, fail } of failedSessionChecks) {
     assert.equal(screen.queryByLabelText('Email'), null);
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
 
-    await screen.findByText('JSMITH');
+    await screen.findByRole('button', { name: 'Account for JSMITH' });
     assert.equal(attempts, 2);
   });
 }
@@ -223,8 +225,9 @@ test('an obsolete Strict Mode session check cannot sign the user back in after l
   };
   const fetchMock = t.mock.method(globalThis, 'fetch', withEmptyTrades(fakeFetch));
   render(<StrictMode><App /></StrictMode>);
-  await screen.findByText('JSMITH');
+  await screen.findByRole('button', { name: 'Account for JSMITH' });
   assert.equal(fetchMock.mock.calls[0].arguments[1]?.signal?.aborted, true);
+  fireEvent.click(screen.getByRole('button', { name: 'Account for JSMITH' }));
   fireEvent.click(screen.getByRole('button', { name: 'Sign out' }));
   await screen.findByLabelText('Email');
 

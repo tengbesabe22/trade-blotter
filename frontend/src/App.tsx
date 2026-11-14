@@ -3,6 +3,7 @@ import { ApiError } from './api/api-client';
 import { authApi } from './api/auth-api';
 import type { CurrentUser } from './api/auth-contract';
 import { TradeWorkspace } from './trades/TradeWorkspace';
+import { AccountMenu } from './auth/AccountMenu';
 import { LoginForm } from './auth/LoginForm';
 
 type SessionState =
@@ -45,9 +46,11 @@ function App() {
   }
 
   return (
-    <main className="flex min-h-svh items-center justify-center px-4 py-6 sm:px-6 sm:py-10">
-      <div className={`w-full ${session.status === 'signed-in' ? 'max-w-7xl' : 'max-w-sm'}`}>
-        <header className="mb-7 flex items-center gap-3">
+    <main className={session.status === 'signed-in'
+      ? 'min-h-svh px-4 py-4'
+      : 'flex min-h-svh items-center justify-center px-4 py-6 sm:px-6 sm:py-10'}>
+      <div className={`w-full ${session.status === 'signed-in' ? '' : 'max-w-sm'}`}>
+        <header className={'flex items-center gap-3 ' + (session.status === 'signed-in' ? 'mb-3' : 'mb-7')}>
           <span aria-hidden="true" className="flex size-10 items-center justify-center rounded-lg bg-slate-900 text-sm font-bold text-white">
             TB
           </span>
@@ -55,6 +58,10 @@ function App() {
             <p className="text-base font-semibold tracking-tight text-slate-950">Trade Blotter</p>
             <p className="text-xs text-slate-500">Equities workspace</p>
           </div>
+          {session.status === 'signed-in' && (
+            <AccountMenu key={session.user.id} user={session.user}
+              onSignedOut={() => setSession({ status: 'signed-out' })} />
+          )}
         </header>
 
         <div className={session.status === 'signed-in' ? '' : 'rounded-2xl border border-slate-200 bg-white p-7 shadow-sm sm:p-8'}>
