@@ -1,6 +1,7 @@
 import { lazy, Suspense, useCallback, useRef, useState } from 'react';
 import type { CurrentUser } from '../api/auth-contract';
 import { AmendTradeForm } from './AmendTradeForm';
+import { CancelTradePanel } from './CancelTradePanel';
 import { ApiError } from '../api/api-client';
 import { useLiveTrades, type StreamStatus } from './useLiveTrades';
 import { defaultTradeListQuery, type TradeListQuery, type Trade } from '../api/trade-contract';
@@ -20,13 +21,15 @@ const streamMessages = {
   unavailable: 'Live updates unavailable. Use Refresh trades.',
 } satisfies Record<StreamStatus, string>;
 
+type SelectedTradeAction = { kind: 'amend' | 'cancel'; trade: Trade };
+
 type TradesPageProps = {
   user: CurrentUser;
   onSessionExpired: () => void;
 };
 
 export function TradesPage({ user, onSessionExpired }: TradesPageProps) {
-  const [selectedTrade, setSelectedTrade] = useState<Trade | null>(null);
+  const [selectedAction, setSelectedAction] = useState<SelectedTradeAction | null>(null);
   const [savedTrade, setSavedTrade] = useState<Trade | null>(null);
   const [success, setSuccess] = useState('');
   const tradesTitle = useRef<HTMLHeadingElement>(null);
@@ -41,12 +44,17 @@ export function TradesPage({ user, onSessionExpired }: TradesPageProps) {
   const sessionExpired = query.error instanceof ApiError && query.error.status === 401;
 
   const openAmendment = useCallback((trade: Trade) => {
-    setSelectedTrade(trade);
+    setSelectedAction((current) => current ?? { kind: 'amend', trade });
     setSuccess('');
   }, []);
 
-  function closeAmendment() {
-    setSelectedTrade(null);
+  const openCancellation = useCallback((trade: Trade) => {
+    setSelectedAction((current) => current ?? { kind: 'cancel', trade });
+    setSuccess('');
+  }, []);
+
+  function closeTradeAction() {
+    setSelectedAction(null);
     tradesTitle.current?.focus();
   }
 
@@ -121,17 +129,31 @@ export function TradesPage({ user, onSessionExpired }: TradesPageProps) {
       ) : (
         <>
           {success && <p role="status" className="mx-4 mb-4 text-sm text-emerald-800 sm:mx-6">{success}</p>}
-          {selectedTrade && (
+          {selectedAction?.kind === 'amend' && (
             <AmendTradeForm
-              key={selectedTrade.id}
-              trade={selectedTrade}
-              latestTrade={trades?.find((trade) => trade.id === selectedTrade.id)}
+              key={selectedAction.trade.id}
+              trade={selectedAction.trade}
+              latestTrade={trades?.find((trade) => trade.id === selectedAction.trade.id)}
               onSessionExpired={onSessionExpired}
-              onDiscard={closeAmendment}
+              onDiscard={closeTradeAction}
               onAmended={(trade) => {
                 setSavedTrade(trade);
-                closeAmendment();
+                closeTradeAction();
                 setSuccess('Trade amended: ' + trade.symbol + ' · ' + trade.id);
+              }}
+            />
+          )}
+          {selectedAction?.kind === 'cancel' && (
+            <CancelTradePanel
+              key={selectedAction.trade.id}
+              trade={selectedAction.trade}
+              latestTrade={trades?.find((trade) => trade.id === selectedAction.trade.id)}
+              onSessionExpired={onSessionExpired}
+              onClose={closeTradeAction}
+              onCancelled={(trade) => {
+                setSavedTrade(trade);
+                closeTradeAction();
+                setSuccess('Trade cancelled: ' + trade.symbol + ' · ' + trade.id);
               }}
             />
           )}
@@ -174,11 +196,11 @@ export function TradesPage({ user, onSessionExpired }: TradesPageProps) {
               <p className="px-4 py-3 text-xs leading-5 text-slate-600 sm:px-6">
                 Prices in USD · Execution times in UTC. Scroll horizontally to see all columns.
                 Use the sort controls to order all trades.
-                {user.role === 'TRADER' && ' You can amend only your own active trades.'}
+                {user.role === 'TRADER' && ' You can amend or cancel only your own active trades.'}
               </p>
               <Suspense fallback={<p role="status" className="p-10 text-center text-sm text-slate-600">Preparing trade table…</p>}>
-                <TradeTable trades={trades} user={user} amendDisabled={selectedTrade !== null}
-                  onAmend={openAmendment} />
+                <TradeTable trades={trades} user={user} actionsDisabled={selectedAction !== null}
+                  onAmend={openAmendment} onCancel={openCancellation} />
               </Suspense>
             </>
           )}

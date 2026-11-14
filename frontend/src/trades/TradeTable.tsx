@@ -67,21 +67,27 @@ type TradeTableProps = {
   trades: Trade[];
   user: CurrentUser;
   onAmend: (trade: Trade) => void;
-  amendDisabled: boolean;
+  onCancel: (trade: Trade) => void;
+  actionsDisabled: boolean;
 };
 
-export function TradeTable({ trades, user, onAmend, amendDisabled }: TradeTableProps) {
+export function TradeTable({ trades, user, onAmend, onCancel, actionsDisabled }: TradeTableProps) {
   const actionColumn = useMemo<ColDef<Trade>>(() => ({
-    colId: 'actions', headerName: 'Actions', pinned: 'right', width: 110,
+    colId: 'actions', headerName: 'Actions', pinned: 'right', width: 220,
     cellRenderer: ({ data }: CustomCellRendererProps<Trade>) => {
       if (!data || data.ownerId !== user.id || data.status !== 'ACTIVE') return '—';
       return (
-        <button type="button" disabled={amendDisabled} aria-label={`Amend ${data.symbol} trade ${data.id}`}
-          className="min-h-10 rounded px-3 font-semibold text-blue-700 hover:bg-blue-50 focus-visible:outline-2 focus-visible:outline-blue-700 disabled:opacity-50"
-          onClick={() => onAmend(data)}>Amend</button>
+        <div className="flex h-full items-center gap-1">
+          <button type="button" disabled={actionsDisabled} aria-label={`Amend ${data.symbol} trade ${data.id}`}
+            className="min-h-10 rounded px-3 font-semibold text-blue-700 hover:bg-blue-50 focus-visible:outline-2 focus-visible:outline-blue-700 disabled:opacity-50"
+            onClick={() => onAmend(data)}>Amend</button>
+          <button type="button" disabled={actionsDisabled} aria-label={`Cancel ${data.symbol} trade ${data.id}`}
+            className="min-h-10 rounded px-3 font-semibold text-red-700 hover:bg-red-50 focus-visible:outline-2 focus-visible:outline-red-700 disabled:opacity-50"
+            onClick={() => onCancel(data)}>Cancel trade</button>
+        </div>
       );
     },
-  }), [user.id, onAmend, amendDisabled]);
+  }), [user.id, onAmend, onCancel, actionsDisabled]);
   // Live row changes must not rebuild column definitions and reset resized widths.
   const tableColumns = useMemo(() => user.role === 'TRADER' ? [...columns, actionColumn] : columns,
     [user.role, actionColumn]);

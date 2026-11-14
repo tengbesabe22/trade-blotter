@@ -2,8 +2,7 @@
 
 `POST /api/trades/:id/cancel` cancels an owned ACTIVE trade. The record stays in
 the blotter with status `CANCELLED`; its business fields are retained.
-The endpoint, cancellation SSE delivery and frontend API client are implemented.
-The row action and confirmation panel remain pending.
+The endpoint, SSE delivery, browser client and inline confirmation panel are implemented.
 
 ## Request
 
@@ -50,6 +49,21 @@ Conflicts keep their details in `ApiError.responseBody` as `unknown`. Validate w
 `cancelTradeConflictSchema` before reviewing its ACTIVE or already-CANCELLED
 `currentTrade`. Network/malformed-success errors leave the outcome unconfirmed.
 
+## Inline confirmation
+
+- **Cancel trade** appears beside Amend only on your own ACTIVE rows. Reviewers
+  have no Actions column; other owners and cancelled rows show a dash.
+- The panel shows read-only trade details and an optional reason. **Keep trade**
+  closes without submitting; **Confirm cancellation** sends the captured version.
+  Only one amendment or cancellation panel can be open.
+- A newer version preserves the reason and blocks confirmation until **Review latest**
+  is chosen. Confirmation is a separate action. Already-cancelled trades offer **Close**.
+- While submitting, editing, closing and duplicate submissions are disabled.
+  Unconfirmed network/server/response failures retain the reason and offer **Close**;
+  there is no automatic retry or claim that the trade was kept.
+- Opening focuses the panel; closing or success focuses the Trades heading.
+  Success uses the existing version-aware cache merger immediately, without another GET.
+
 ## Persistence and delivery
 
 The repository conditionally updates owner + ACTIVE + expectedVersion and returns
@@ -66,11 +80,11 @@ Permanent audit history and live summaries remain separate work.
 ## Live browser behavior
 
 The receiving table retains the row with `CANCELLED` status and the new version,
-without another GET. Its Amend action disappears. An open amendment keeps its draft
+without another GET. Its Amend and Cancel trade actions disappear. An open amendment keeps its draft
 but blocks saving, with a cancellation message. Existing version guards ignore
 duplicate/older events, so a stale amendment cannot restore the active status.
 
 Manual check: open the blotter in two separately signed-in browser sessions, then
-use the curl request above for an owned visible trade and its current version.
+choose Cancel trade on an owned visible row, enter a reason and confirm.
 Both sessions should receive the cancellation without refreshing. Traders and
 reviewers receive the same trade events. See the [stream guide](trade-stream-api.md#trade-change-events).

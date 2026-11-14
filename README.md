@@ -5,10 +5,10 @@ A TypeScript application for viewing and recording USD equity trades.
 **Working:** individual login/logout, database sessions, trade listing, and trade
 creation with validation, idempotent retries, and transactional outbox storage.
 Trade reads support bounded cursor pages, server sorting, and filtering.
-Traders can amend their own ACTIVE trades through an inline form, with ownership
-and version checks, immediate cache updates and SSE delivery.
+Traders can amend or cancel their own ACTIVE trades through inline panels, with
+ownership/version checks, immediate cache updates and SSE delivery.
 
-**Next:** broader live-page reconciliation, filter controls, cancellation UI, and deployment.
+**Next:** broader live-page reconciliation, filter controls, and deployment.
 The frontend supports login, session restoration, logout, and a read-only trade
 grid with server sorting, Previous/Next pagination, manual refresh, and loading/empty/error states.
 Traders can create trades through a validated form; successful submissions refresh the current page.
@@ -77,8 +77,8 @@ All four accounts use the local demo password **`LocalDemo!2026`**.
 
 Both roles can list all trades. Only traders can create trades; ownership comes
 from the session. Traders can amend only their own ACTIVE trades with the expected
-version. Traders can also cancel owned ACTIVE trades through the API; cancellation
-SSE delivery is implemented; its UI remains pending.
+version. Cancellation uses an inline confirmation panel with an optional reason;
+cancelled rows remain visible and receive no further mutation actions.
 All seeded trades and prices are fictional.
 
 ## API guide

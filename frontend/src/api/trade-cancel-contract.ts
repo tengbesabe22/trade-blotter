@@ -6,7 +6,8 @@ export const cancelTradeIdSchema = z.uuid();
 // Status and ownership come from the server; cancellation accepts no trade edits.
 export const cancelTradeRequestSchema = z.strictObject({
   expectedVersion: z.number().int().positive().max(2_147_483_647),
-  reason: z.string().trim().max(500).nullish().transform((value) => value || null),
+  reason: z.string().trim().max(500, 'Reason must be at most 500 characters.')
+    .nullish().transform((value) => value || null),
 });
 
 export type CancelTradeRequest = z.input<typeof cancelTradeRequestSchema>;
