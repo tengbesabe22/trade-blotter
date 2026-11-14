@@ -43,6 +43,7 @@ async function setup(options: Options = {}) {
     amend: async () => { throw new Error('Cancellation must not amend trades.'); },
     list: async () => { throw new Error('Cancellation must not list trades.'); },
     create: async () => { throw new Error('Cancellation must not create trades.'); },
+    listFilterOptions: async () => { throw new Error('Unexpected filter-options lookup in this test.'); },
     cancel: async (command) => {
       commands.push(command);
       return options.cancel ? options.cancel(command) : { kind: 'cancelled', body: { trade: cancelledTrade } };

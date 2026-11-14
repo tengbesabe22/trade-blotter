@@ -73,6 +73,39 @@ Unknown keys (including before), duplicate singleton parameters and invalid valu
 `400 INVALID_CURSOR`. Invalid sessions return 401; unexpected failures return a
 sanitised 500.
 
+## Filter options
+
+`GET /api/trades/filter-options` requires an active session and permits both roles.
+It returns reference lists independent of trade filters, pagination or trade history:
+
+```json
+{
+  "instruments": [{ "symbol": "AAPL", "name": "Apple Inc." }],
+  "traders": [{ "id": "<account-uuid>", "displayName": "JSMITH" }]
+}
+```
+
+The repository runs two independent reads concurrently: all instruments ordered by
+symbol, and TRADER accounts ordered by display name then ID. It selects only the
+fields above, does not query trades and needs no transaction. Options with no trades
+still appear. Empty tables return empty arrays. The route validates the public
+response and strips extra fields; failures use the existing sanitized 500 response.
+Missing/expired sessions return 401. This passive read never renews idle time.
+
+**Caching plan:** the endpoint is implemented; browser lookup/caching is next.
+Fetch once when the signed-in workspace opens (again after a full browser refresh),
+cache in its TanStack Query client, and clear with the workspace on logout. Filter,
+sort, pagination and SSE changes reuse those options without another lookup.
+There is no polling or server-side catalogue cache. `Cache-Control: no-store`
+prevents HTTP caching; the proposed in-memory application cache is separate.
+
+**Scaling path:** returning both complete lists is scoped to the small reference
+tables. For larger catalogues, use independent searchable dropdown lookups with
+bounded results (for example 25), cursor pagination, search-term caching, roughly
+250 ms typing debounce and cancellation of obsolete requests. Add indexes suited
+to the agreed search behavior. Do not silently truncate a complete-list dropdown
+or derive its options from loaded trade rows. That search API is not implemented.
+
 ## Code organisation
 
 `backend/src/trades/listing/` holds the GET handler, query contract, cursor and

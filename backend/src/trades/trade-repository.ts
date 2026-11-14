@@ -14,6 +14,7 @@ import type {
 } from './amendments/trade-amend-contract';
 import type { CancelTradeCommand, CancelTradeResult } from './cancellations/trade-cancel-contract';
 import type { NormalizedTradeListQuery } from './listing/trade-query-contract';
+import type { TradeFilterOptions } from './listing/trade-filter-options-contract';
 import type { TradeCursorBoundary } from './listing/trade-cursor';
 import { tradeBoundaryFilter, tradeListFilters, tradeListOrder } from './listing/trade-list-query';
 
@@ -31,13 +32,14 @@ export type TradePage = {
 };
 
 export type TradeRepository = {
+  listFilterOptions: () => Promise<TradeFilterOptions>;
   list: (query: NormalizedTradeListQuery, boundary: TradeCursorBoundary | null) => Promise<TradePage>;
   create: (command: CreateTradeCommand) => Promise<CreateTradeResult>;
   amend: (command: AmendTradeCommand) => Promise<AmendTradeResult>;
   cancel: (command: CancelTradeCommand) => Promise<CancelTradeResult>;
 };
 
-type TradeDatabase = Pick<DatabaseClient, 'trade' | '$transaction' | 'idempotencyRequest'>;
+type TradeDatabase = Pick<DatabaseClient, 'trade' | '$transaction' | 'idempotencyRequest' | 'instrument' | 'user'>;
 type SavedCreateRequest = { requestFingerprint: string; responseBody: Prisma.JsonValue };
 
 function replayCreateRequest(saved: SavedCreateRequest, fingerprint: string): CreateTradeResult {
@@ -76,6 +78,23 @@ function hasTradeChanges(
 
 export function createTradeRepository(database: TradeDatabase): TradeRepository {
   return {
+    listFilterOptions: async () => {
+      // Small reference tables: independent reads, without scanning trade history.
+      const [instruments, traders] = await Promise.all([
+        database.instrument.findMany({
+          select: { symbol: true, name: true },
+          orderBy: { symbol: 'asc' },
+        }),
+        database.user.findMany({
+          where: { role: 'TRADER' },
+          select: { id: true, displayName: true },
+          orderBy: [{ displayName: 'asc' }, { id: 'asc' }],
+        }),
+      ]);
+
+      return { instruments, traders };
+    },
+
     create: async (command: CreateTradeCommand): Promise<CreateTradeResult> => {
       const requestKey = {
         userId_key: { userId: command.userId, key: command.idempotencyKey },

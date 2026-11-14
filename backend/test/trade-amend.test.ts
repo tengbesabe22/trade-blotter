@@ -40,6 +40,7 @@ async function setup(options: Options = {}) {
 
   // HTTP validation and guards are real; the repository supplies controlled outcomes.
   const trades: TradeRepository = {
+    listFilterOptions: async () => { throw new Error('Unexpected filter-options lookup in this test.'); },
     cancel: async () => { throw new Error('Unexpected trade cancellation in this test.'); },
     list: async () => { throw new Error('Amendment must not list trades.'); },
     create: async () => { throw new Error('Amendment must not create trades.'); },
