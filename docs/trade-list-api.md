@@ -144,6 +144,15 @@ sends `tradeDateFrom=2026-11-14T00:00:00.000Z` and
 shows an inline error and applies none of the drafts; the same day is valid.
 Conversion uses UTC arithmetic, including month/year/leap-day rollover.
 
+**Timezone tradeoff:** the table and filters deliberately use labelled UTC, giving
+all users the same calendar boundaries regardless of browser location. A UTC day
+can differ from the date a US equities trader associates with an execution.
+[NYSE publishes its sessions in Eastern Time](https://www.nyse.com/markets/hours-calendars).
+A future US equities view could default to `America/New_York` for display and date
+selection while retaining UTC instants in storage and the API. Convert each market
+midnight independently to UTC to handle daylight saving; local days can be 23 or
+25 hours. Current filters cover UTC calendar days, not exchange-session calendars.
+
 Clear filters resets all eight filters and their drafts together, returning to
 page one while preserving sorting, page size and the Create trade draft. Clearing
 only an unapplied draft sends no trade request. It is disabled with no filters or
@@ -160,9 +169,14 @@ filtered results say No matching trades.
 SSE uses the same selections, applied text searches and UTC date bounds: resolve
 versions, filter, then limit. A visible
 row leaving the selection is removed immediately and invalidates the page cursor.
-Nearby exits batch for 100 ms before one current-page background read. It uses the
-selected limit (maximum 200), merges newer buffered events, and does not renew idle
-time. Failures retain event-applied rows and offer manual Refresh.
+Ordering changes on visible rows, matching unseen trades on other pages/sorts,
+filter exits and uncertain default-page boundaries request reconciliation. Changes
+batch for 100 ms before one current-page background read. It retains the selected
+filters/sort/limit/cursor anchor (maximum 200 rows) and never renews idle time.
+Ordinary field edits and unrelated/duplicate events need no read. The snapshot
+settles membership; newer buffered values survive, while events already accounted
+for do not repeatedly schedule the same fetch. Failures retain event-applied rows
+and offer manual Refresh. Older-page notices survive passive reconciliation.
 
 Repository tests use fake database operations. A separate local HTTP smoke check
 verified all six sorts in both directions, replayed page requests for Previous, filtering,

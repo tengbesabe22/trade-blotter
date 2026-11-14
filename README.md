@@ -8,10 +8,11 @@ Trade reads support bounded cursor pages, server sorting, and filtering.
 Traders can amend or cancel their own ACTIVE trades through inline panels, with
 ownership/version checks, immediate cache updates and SSE delivery.
 
-**Next:** remaining filter controls, broader live-page reconciliation, and deployment.
+**Next:** final acceptance checks, audit/summary extensions, and deployment.
 The frontend supports login, session restoration, logout, and a read-only trade
 grid with server sorting, Previous/Next pagination, manual refresh, and loading/empty/error states.
-Ticker, Trader, Status and Side filters run on the server and also apply to live events.
+Ticker, Trader, Status, Side, Book, Counterparty and UTC date filters run on the
+server and also apply to live events.
 Ticker/trader options share the same cached lookup used by Create trade.
 A row leaving the selection disappears immediately; a batched page fetch fills the gap.
 The desktop workspace places sorting/filter controls and the default Create trade form
@@ -21,8 +22,9 @@ Create trade searches a cached instrument list by ticker/company name and requir
 a valid selection. Successful creation refreshes the current page.
 SSE inserts creation events directly into the default first-page cache. Other pages
 and sorts retain their position; the new-trade notice appears only on older pages.
-If a live insert changes a full page boundary, Refresh trades obtains a fresh cursor
-before Next is enabled.
+Ordering/membership changes batch for 100 ms before a background read of the same
+page. Ordinary field edits need no read. A stale Next cursor stays disabled until
+reconciliation supplies a fresh one; older pages retain their new-trade notice.
 
 ## Run locally
 
@@ -98,8 +100,10 @@ All seeded trades and prices are fictional.
 | POST | `/api/auth/logout` | Revoke the current session |
 | GET | `/api/trades` | Read a bounded, sortable/filterable cursor page |
 | GET | `/api/trades/filter-options` | Read instrument/trader dropdown options |
-| GET | `/api/events` | Stream trade creations with heartbeats and session checks |
+| GET | `/api/events` | Stream trade changes with heartbeats and session checks |
 | POST | `/api/trades` | Create a trade or replay its saved response |
+| PATCH | `/api/trades/:id` | Amend an owned active trade |
+| POST | `/api/trades/:id/cancel` | Cancel an owned active trade |
 
 Start with [authentication and curl examples](docs/authentication.md), then
 [listing trades](docs/trade-list-api.md), [creating a trade](docs/trade-create-api.md),
@@ -129,7 +133,8 @@ pending. Outbox records are stored; the relayer wakes after committed creates/am
 at startup and every second for recovery. SSE creation/amendment/cancellation delivery, heartbeats
 and session checks are implemented for one backend process. Browser subscriptions
 update the default first page directly and resynchronise the current page after
-reconnection; broader automatic page reconciliation remains pending.
+reconnection. Relevant ordering/membership changes also reconcile the current page
+without moving the user to page one.
 
 ## Project map
 

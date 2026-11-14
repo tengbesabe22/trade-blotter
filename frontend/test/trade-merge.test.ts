@@ -24,6 +24,7 @@ test('a full live page stays bounded and clears its displaced-row cursor until r
   assert.deepEqual(result.trades, [newer]);
   assert.equal(result.pageInfo.nextCursor, null);
   assert.equal(result.hasNewTrades, true);
+  assert.equal(result.needsRefill, true);
 
   const refreshed = tradePage([newer], { limit: 1, nextCursor: 'new-boundary' });
   const reconciled = mergeLiveTradePage(refreshed, [newer], { ...defaultTradeListQuery, limit: 1 });
@@ -56,8 +57,9 @@ test('older pages and other sorts keep their position and show a new-trade notic
   ]) {
     const result = mergeLiveTradePage(tradePage([sampleTrade], { nextCursor: 'keep-cursor' }), [newer], query);
     assert.deepEqual(result.trades, [sampleTrade]);
-    assert.equal(result.pageInfo.nextCursor, 'keep-cursor');
+    assert.equal(result.pageInfo.nextCursor, null);
     assert.equal(result.hasNewTrades, true);
+    assert.equal(result.needsRefill, true);
   }
 });
 
@@ -222,4 +224,35 @@ test('a newer trade moving outside the date range is removed and requires a fres
   assert.equal(result.trades.length, 0);
   assert.equal(result.pageInfo.nextCursor, null);
   assert.equal(result.needsRefill, true);
+});
+
+
+test('a newer change to the selected sort value requests a fresh page for every server sort', () => {
+  for (const [sortBy, changes] of [
+    ['price', { price: '300.0000' }],
+    ['quantity', { quantity: '1.000000' }],
+    ['symbol', { symbol: 'MSFT' }],
+    ['trader', { trader: 'JSMITH' }],
+    ['status', { status: 'CANCELLED' }],
+    ['tradeDate', { tradeDate: '2026-11-14T00:00:00.000Z' }],
+  ] as const) {
+    const updated = { ...sampleTrade, ...changes, version: 2 };
+    const query = { ...defaultTradeListQuery, sortBy, sortDirection: 'asc' as const };
+    const result = mergeLiveTradePage(tradePage([sampleTrade], { nextCursor: 'old' }), [updated], query);
+    assert.deepEqual(result.trades, [updated]);
+    assert.equal(result.needsRefill, true, sortBy);
+    assert.equal(result.pageInfo.nextCursor, null, sortBy);
+    const stale = mergeLiveTradePage(tradePage([updated], { nextCursor: 'fresh' }), [sampleTrade], query);
+    assert.equal(stale.needsRefill, false, sortBy);
+    assert.equal(stale.pageInfo.nextCursor, 'fresh', sortBy);
+  }
+});
+
+test('non-sort edits, duplicates and unrelated trades do not request reconciliation', () => {
+  const query = { ...defaultTradeListQuery, sortBy: 'price' as const, symbol: 'AAPL' };
+  const quantityEdit = { ...sampleTrade, quantity: '1.000000', version: 2 };
+  const result = mergeLiveTradePage(tradePage([sampleTrade], { nextCursor: 'keep' }), [quantityEdit, sampleTrade, newer], query);
+  assert.deepEqual(result.trades, [quantityEdit]);
+  assert.equal(result.needsRefill, false);
+  assert.equal(result.pageInfo.nextCursor, 'keep');
 });

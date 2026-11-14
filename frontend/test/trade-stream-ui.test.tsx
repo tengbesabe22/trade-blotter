@@ -198,22 +198,31 @@ test('Strict Mode leaves only one active connection and ignores the obsolete con
   assert.ok(FakeEventSource.sources.every((source) => source.closed));
 });
 
-test('a full first page shows the live row without the new-trade notice', async (t) => {
+test('a full first page shows the live row immediately and automatically obtains a fresh cursor without a notice', async (t) => {
   const rows = Array.from({ length: 100 }, (_, index) => ({
     ...sampleTrade,
     id: `f1550000-0000-4000-8000-${String(100 - index).padStart(12, '0')}`,
     symbol: `ROW${100 - index}`,
   }));
-  const h = setup(t, async () => Response.json(tradePage(rows, { nextCursor: 'old-boundary' })));
+  let serverRows = rows;
+  const h = setup(t, async () => Response.json(tradePage(serverRows, {
+    nextCursor: serverRows === rows ? 'old-boundary' : 'fresh-boundary',
+  })));
   await act(async () => { h.source.emit('stream.ready', ready); });
   await screen.findByText('100 trades shown');
   assert.equal(screen.getByRole('button', { name: 'Next' }).hasAttribute('disabled'), false);
 
+  serverRows = [newer, ...rows.slice(0, 99)];
   await act(async () => { h.source.emit('trade.changed', change); });
   await screen.findByText('TSLA');
   assert.equal(h.page()?.hasNewTrades, true); // Pagination still needs a fresh boundary.
   assert.equal(screen.queryByText(/New trades received/) === null, true);
   assert.equal(screen.getByRole('button', { name: 'Next' }).hasAttribute('disabled'), true);
+  await waitFor(() => assert.equal(h.page()?.pageInfo.nextCursor, 'fresh-boundary'));
+  assert.equal(h.page()?.hasNewTrades, false);
+  assert.equal(screen.getByRole('button', { name: 'Next' }).hasAttribute('disabled'), false);
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 250)); });
+  assert.equal(h.fetchMock.mock.callCount(), 2);
 });
 
 test('manual refresh, navigation and sort changes remain user-initiated requests', async (t) => {
@@ -372,7 +381,7 @@ test('a failed refill preserves event-applied rows and waits for manual retry', 
   await act(async () => { h.source.emit('trade.changed', { ...change, type: 'TRADE_CANCELLED', trade: { ...sampleTrade, version: 2, status: 'CANCELLED' } }); });
   await screen.findByText(/Unable to refresh trades/);
   assert.deepEqual(h.page()?.trades.map((trade) => trade.symbol), ['TSLA']);
-  await new Promise((resolve) => setTimeout(resolve, 200));
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 200)); });
   assert.equal(activeReads, 2);
   fireEvent.click(screen.getByRole('button', { name: 'Refresh trades' }));
   await waitFor(() => assert.equal(activeReads, 3));
@@ -389,7 +398,7 @@ test('changing filters cancels a queued refill for the old selection', async (t)
   await selectStatus('ACTIVE');
   await act(async () => { h.source.emit('trade.changed', { ...change, type: 'TRADE_CANCELLED', trade: cancelled }); });
   await selectStatus('CANCELLED');
-  await new Promise((resolve) => setTimeout(resolve, 200));
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 200)); });
   assert.equal(h.fetchMock.mock.callCount(), 3);
   assert.equal(h.page()?.trades[0]?.status, 'CANCELLED');
 });
@@ -489,4 +498,154 @@ test('date-only Apply hides previous-filter rows and retains matching SSE during
   assert.deepEqual(h.page()?.trades, [matching]);
   assert.equal(h.fetchMock.mock.callCount(), 2);
   assert.equal(FakeEventSource.sources.length, 1);
+});
+
+
+// A full price-sorted page, plus the next row known only to the server.
+const priceRows = Array.from({ length: 26 }, (_, index) => ({
+  ...sampleTrade,
+  id: `f1550000-0000-4000-8000-${String(200000 + index).padStart(12, '0')}`,
+  symbol: index === 0 ? 'AAPL' : 'MSFT',
+  price: `${100 + index}.0000`,
+}));
+
+async function selectPricePage() {
+  fireEvent.change(screen.getByLabelText('Sort by'), { target: { value: 'price' } });
+  fireEvent.change(screen.getByLabelText('Sort direction'), { target: { value: 'asc' } });
+  fireEvent.change(screen.getByLabelText('Rows per page'), { target: { value: '25' } });
+  await waitFor(() => assert.equal(screen.getByRole('button', { name: 'Refresh trades' }).hasAttribute('disabled'), false));
+}
+
+test('price changes batch one passive fetch, restore server membership and preserve concurrent non-sort edits without looping', async (t) => {
+  let finish!: (response: Response) => void;
+  let reconciliation = false;
+  const pending = new Promise<Response>((resolve) => { finish = resolve; });
+  const h = setup(t, async (input) => {
+    if (reconciliation) return pending;
+    const limit = Number(new URL(String(input), 'http://localhost').searchParams.get('limit'));
+    return Response.json(tradePage(priceRows.slice(0, 25), { limit, nextCursor: 'old' }));
+  });
+  await act(async () => { h.source.emit('stream.ready', ready); });
+  await screen.findByText('25 trades shown');
+  await selectPricePage();
+  const before = h.fetchMock.mock.callCount();
+  reconciliation = true;
+  const amended = { ...priceRows[0], price: '300.0000', version: 3 };
+  await act(async () => {
+    h.source.emit('trade.changed', { ...change, type: 'TRADE_AMENDED', trade: { ...amended, price: '250.0000', version: 2 } });
+    h.source.emit('trade.changed', { ...change, type: 'TRADE_AMENDED', trade: amended });
+    h.source.emit('trade.changed', { ...change, type: 'TRADE_AMENDED', trade: amended });
+  });
+  assert.equal(h.page()?.trades[0]?.price, '300.0000');
+  assert.equal(h.page()?.pageInfo.nextCursor, null);
+  await waitFor(() => assert.equal(h.fetchMock.mock.callCount(), before + 1));
+  const quantityEdit = { ...priceRows[1], quantity: '1.000000', version: 2 };
+  await act(async () => {
+    h.source.emit('trade.changed', { ...change, type: 'TRADE_AMENDED', trade: quantityEdit });
+    finish(Response.json(tradePage(priceRows.slice(1), { limit: 25, nextCursor: 'fresh' })));
+  });
+  await waitFor(() => assert.equal(h.page()?.pageInfo.nextCursor, 'fresh'));
+  assert.deepEqual(h.page()?.trades.map((trade) => trade.id), priceRows.slice(1).map((trade) => trade.id));
+  assert.equal(h.page()?.trades[0]?.quantity, '1.000000');
+  assert.equal(h.page()?.needsRefill, false);
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 250)); });
+  assert.equal(h.fetchMock.mock.callCount(), before + 1);
+  const [url, options] = h.fetchMock.mock.calls.at(-1)!.arguments;
+  const query = new URL(String(url), 'http://localhost').searchParams;
+  assert.equal(query.get('sortBy'), 'price');
+  assert.equal(query.get('sortDirection'), 'asc');
+  assert.equal(query.get('limit'), '25');
+  assert.equal(new Headers(options?.headers).get('X-Session-Activity'), 'background');
+});
+
+test('a matching unseen trade on a price-sorted first page appears after one reconciliation', async (t) => {
+  let serverRows = priceRows.slice(0, 25);
+  const h = setup(t, async (input) => Response.json(tradePage(serverRows, {
+    limit: Number(new URL(String(input), 'http://localhost').searchParams.get('limit')), nextCursor: 'fresh',
+  })));
+  await act(async () => { h.source.emit('stream.ready', ready); });
+  await screen.findByText('25 trades shown');
+  await selectPricePage();
+  const before = h.fetchMock.mock.callCount();
+  const created = { ...newer, price: '90.0000' };
+  serverRows = [created, ...priceRows.slice(0, 24)];
+  await act(async () => { h.source.emit('trade.changed', { ...change, trade: created }); });
+  await screen.findByText('TSLA');
+  assert.equal(h.fetchMock.mock.callCount(), before + 1);
+  assert.deepEqual(h.page()?.trades, serverRows);
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 250)); });
+  assert.equal(h.fetchMock.mock.callCount(), before + 1);
+});
+
+test('ordinary edits, duplicates and nonmatching unseen trades make no background page request', async (t) => {
+  const h = setup(t);
+  await act(async () => { h.source.emit('stream.ready', ready); });
+  await screen.findByText('AAPL');
+  fireEvent.change(screen.getByLabelText('Sort by'), { target: { value: 'price' } });
+  fireEvent.change(screen.getByRole('combobox', { name: 'Ticker filter' }), { target: { value: 'AAPL' } });
+  await waitFor(() => assert.equal(screen.getByRole('button', { name: 'Refresh trades' }).hasAttribute('disabled'), false));
+  const before = h.fetchMock.mock.callCount();
+  const edited = { ...sampleTrade, quantity: '1.000000', version: 2 };
+  await act(async () => {
+    h.source.emit('trade.changed', { ...change, type: 'TRADE_AMENDED', trade: edited });
+    h.source.emit('trade.changed', { ...change, type: 'TRADE_AMENDED', trade: edited });
+    h.source.emit('trade.changed', { ...change, trade: newer });
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  });
+  assert.equal(h.page()?.trades[0]?.quantity, '1.000000');
+  assert.equal(h.fetchMock.mock.callCount(), before);
+});
+
+test('an ordering change during reconciliation survives its older response and schedules just one follow-up', async (t) => {
+  let finish!: (response: Response) => void;
+  let reconciling = false;
+  let reads = 0;
+  const pending = new Promise<Response>((resolve) => { finish = resolve; });
+  const moved = { ...priceRows[0], price: '300.0000', version: 2 };
+  const movedAgain = { ...moved, price: '350.0000', version: 3 };
+  const h = setup(t, async (input) => {
+    const limit = Number(new URL(String(input), 'http://localhost').searchParams.get('limit'));
+    if (!reconciling) return Response.json(tradePage([priceRows[0]], { limit }));
+    if (++reads === 1) return pending;
+    return Response.json(tradePage([movedAgain], { limit }));
+  });
+  await act(async () => { h.source.emit('stream.ready', ready); });
+  await screen.findByText('AAPL');
+  await selectPricePage();
+  const before = h.fetchMock.mock.callCount();
+  reconciling = true;
+  await act(async () => { h.source.emit('trade.changed', { ...change, type: 'TRADE_AMENDED', trade: moved }); });
+  await waitFor(() => assert.equal(reads, 1));
+  await act(async () => {
+    h.source.emit('trade.changed', { ...change, type: 'TRADE_AMENDED', trade: movedAgain });
+    finish(Response.json(tradePage([moved], { limit: 25 })));
+  });
+  await waitFor(() => assert.equal(h.page()?.trades[0]?.price, '350.0000'));
+  await waitFor(() => assert.equal(reads, 2));
+  await waitFor(() => assert.equal(h.page()?.needsRefill, false));
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 250)); });
+  assert.equal(h.fetchMock.mock.callCount(), before + 2);
+});
+
+test('reconciliation keeps an older page anchor and its new-trade notice without jumping pages', async (t) => {
+  const urls: URL[] = [];
+  const h = setup(t, async (input) => {
+    const url = new URL(String(input), 'http://localhost');
+    urls.push(url);
+    return Response.json(url.searchParams.has('after')
+      ? tradePage([cancelledTrade], { nextCursor: 'third' })
+      : tradePage([sampleTrade], { nextCursor: 'older' }));
+  });
+  await act(async () => { h.source.emit('stream.ready', ready); });
+  await screen.findByText('AAPL');
+  fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+  await screen.findByText('MSFT');
+  const before = h.fetchMock.mock.callCount();
+  await act(async () => { h.source.emit('trade.changed', change); });
+  await waitFor(() => assert.equal(h.fetchMock.mock.callCount(), before + 1));
+  await waitFor(() => assert.equal(h.page()?.needsRefill, false));
+  assert.equal(urls.at(-1)?.searchParams.get('after'), 'older');
+  assert.deepEqual(h.page()?.trades, [cancelledTrade]);
+  assert.ok(screen.getByText(/New trades received/));
+  assert.equal(screen.getByRole('button', { name: 'First page' }).hasAttribute('disabled'), false);
 });

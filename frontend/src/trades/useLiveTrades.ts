@@ -5,7 +5,7 @@ import type { Trade, TradeListQuery } from '../api/trade-contract';
 import { streamReadySchema, tradeChangeSchema } from '../api/trade-stream-contract';
 import { isLiveFirstPage, mergeLiveTradePage, mergeNewestTrades, type LiveTradePage } from './trade-merge';
 
-const FILTER_REFILL_DELAY_MS = 100;
+const PAGE_RECONCILIATION_DELAY_MS = 100;
 
 export type StreamStatus = 'connecting' | 'connected' | 'reconnecting' | 'unavailable';
 
@@ -47,13 +47,26 @@ export function useLiveTrades(request: TradeListQuery, savedTrade: Trade | null 
     queryFn: async ({ signal }) => {
       // Compare this count after the request to detect updates received while it waited.
       const receivedCountAtStart = receivedTradeCount.current;
+      const bufferedVersionsAtStart = new Map(buffered.current.map((trade) => [trade.id, trade.version]));
+      const previousPage = queryClient.getQueryData<LiveTradePage>(queryKey);
       const activity = userRequestPending.current ? 'user' : 'background';
       userRequestPending.current = false;
       const page = await tradeApi.list(request, signal, activity);
       if (signal.aborted) return page;
 
-      // Merge after the fetch, so an older response cannot erase a received event.
-      const merged = mergeLiveTradePage(page, buffered.current, request);
+      const snapshotVersions = new Map(page.trades.map((trade) => [trade.id, trade.version]));
+      const pendingTrades = buffered.current.filter((trade) => {
+        const snapshotVersion = snapshotVersions.get(trade.id);
+        if (snapshotVersion !== undefined) return trade.version > snapshotVersion;
+        // An absent row received before this request may belong to another page.
+        // Trust server membership; replay only unseen events received during the fetch.
+        return trade.version > (bufferedVersionsAtStart.get(trade.id) ?? 0);
+      });
+      const merged = mergeLiveTradePage(page, pendingTrades, request);
+      // Background reconciliation keeps older-page browsing and its arrival notice.
+      if (request.after && activity === 'background' && previousPage?.hasNewTrades) {
+        return { ...merged, hasNewTrades: true };
+      }
       // A refresh can clear an off-page notice only if no updates arrived during it.
       // Example: count 7 -> 8 means the response may not include that latest update.
       return !isLiveFirstPage(request) && receivedTradeCount.current === receivedCountAtStart
@@ -71,9 +84,9 @@ export function useLiveTrades(request: TradeListQuery, savedTrade: Trade | null 
   useEffect(() => {
     if (!needsRefill || isFetching || isError) return;
     if (streamStatus !== 'connected' && streamStatus !== 'unavailable') return;
-    // The event already removed the row. Batch nearby exits into one passive,
-    // page-sized read; failures keep the live rows and use the manual Refresh action.
-    const timer = setTimeout(() => { void refetch(); }, FILTER_REFILL_DELAY_MS);
+    // Batch ordering/membership changes into one passive read of this same page.
+    // Failures keep event-applied rows and use the existing manual Refresh action.
+    const timer = setTimeout(() => { void refetch(); }, PAGE_RECONCILIATION_DELAY_MS);
     return () => clearTimeout(timer);
   }, [needsRefill, isFetching, isError, refetch, streamStatus]);
 

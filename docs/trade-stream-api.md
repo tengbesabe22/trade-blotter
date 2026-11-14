@@ -121,17 +121,32 @@ ordinary incoming events. The create form's existing success refresh is unchange
 
 The hook retains up to 200 newest received trades while HTTP requests are pending,
 then merges them into responses so a late snapshot cannot erase streamed changes.
-A live change that invalidates a full page cursor clears it; Refresh obtains a new
-cursor. The first page still suppresses the new-trade notice. Broader automatic
-reconciliation and popup notifications are deferred.
+A live change that invalidates a full page cursor clears it until automatic
+reconciliation obtains a fresh cursor. The first page suppresses the new-trade
+notice; older pages retain theirs through background reconciliation. Popup
+notifications are deferred.
 
-Ticker, trader, Status and Side filters apply to HTTP pages and SSE payloads.
+Ticker, trader, Status, Side, applied Book/Counterparty searches and UTC date
+bounds apply to HTTP pages and SSE payloads.
 Trader matching uses immutable owner ID, not display name. Versions are resolved
 before filtering/limiting, so stale events cannot restore an excluded row. A visible
 row leaving the selection disappears immediately and schedules a page-sized refill
 after a 100 ms batch window. The read is passive and merges newer buffered events.
-Nearby exits share the fetch; a failure retains live rows and waits for manual
-Refresh. Changing filters cancels a queued refill for the old selection.
+The same 100 ms batch covers changed sort values on visible rows, matching unseen
+trades on other pages/sorts, and uncertain default-page boundaries. Ordinary field
+changes, stale/duplicate events and unrelated unseen trades require no read. Unknown
+matching trades are conservative triggers because the browser holds only one page.
+The request retains the current filters, sort, limit and cursor anchor; it does not
+jump to page one. Nearby changes share the fetch; failures retain live rows and
+wait for manual Refresh. Changing the query cancels queued old-page work.
+
+An API snapshot settles page membership. Buffered trades already included at an
+equal/newer version are not replayed. If a buffered trade is absent, only events
+received during that request are replayed; an older event may now belong outside
+this page. Newer buffered values still win over older snapshot rows. A concurrent
+ordering/membership change can request one further reconciliation; historical
+buffer entries do not repeatedly trigger reads after the snapshot accounts for them.
+Batching combines bursts; sustained relevant activity can still cause repeated reads.
 
 Connection errors retain rows with stale/reconnecting feedback. Invalid data or a
 terminal connection error switches to manual refresh. Signing out/unmounting closes
@@ -146,9 +161,9 @@ Heartbeat and trade-event checks also never renew idle time.
 The inline amendment form and cancellation panel supply successful mutation
 responses to the same version guard and buffer. It does not wait for SSE or refetch after saving; duplicate
 SSE delivery is harmless and older in-flight snapshots cannot undo the change.
-Summaries and broader ordering/membership reconciliation remain pending. Automatic
-refill currently covers Status/Side exits; other pages/sorts still use the existing
-unseen-trade notice for matching arrivals.
+Ordering/membership reconciliation is implemented for the current bounded page.
+Live summaries remain pending. Older pages keep the unseen-trade notice until a
+user refreshes or changes the query, even after passive reconciliation.
 
 Tests use fake session persistence, a controlled clock and mocked timers, and
 read/cancel the real Hono response stream.

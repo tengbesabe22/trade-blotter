@@ -1,6 +1,6 @@
 import type { Trade, TradeListQuery, TradeListResponse } from '../api/trade-contract';
 
-// Local cache metadata, not part of the HTTP response contract.
+// Local cache metadata, not part of HTTP. needsRefill requests reconciliation of page order, membership or cursor.
 export type LiveTradePage = TradeListResponse & { hasNewTrades?: boolean; needsRefill?: boolean };
 
 // Only the default newest-execution first page inserts unseen rows immediately.
@@ -64,11 +64,12 @@ function mergeDefaultFirstPage(page: LiveTradePage, incoming: Trade[], request: 
     trades,
     pageInfo: cursorStale ? { ...page.pageInfo, nextCursor: null } : page.pageInfo,
     hasNewTrades: cursorStale,
-    needsRefill: page.needsRefill === true || rowRemoved,
+    needsRefill: page.needsRefill === true || cursorStale,
   };
 }
 
-// Other views keep the same rows/order. Unseen trades set the notice flag instead of inserting.
+// Keep values current immediately; the API restores ordering/membership when uncertain.
+// Unknown matching rows are conservative triggers because this cache holds only one page.
 function updateCurrentPageRows(page: LiveTradePage, incoming: Trade[], request: TradeListQuery): LiveTradePage {
   const updates = new Map<string, Trade>();
   for (const trade of incoming) {
@@ -76,21 +77,26 @@ function updateCurrentPageRows(page: LiveTradePage, incoming: Trade[], request: 
     if (!existing || trade.version > existing.version) updates.set(trade.id, trade);
   }
 
+  let sortChanged = false;
   const trades = page.trades.map((trade) => {
     const update = updates.get(trade.id);
-    return update && update.version > trade.version ? update : trade;
+    if (!update || update.version <= trade.version) return trade;
+    if (update[request.sortBy] !== trade[request.sortBy]) sortChanged = true;
+    return update;
   }).filter((trade) => matchesTradeFilters(trade, request));
   const rowRemoved = trades.length < page.trades.length;
   const visibleIds = new Set(page.trades.map((trade) => trade.id));
   const hasUnseenTrades = [...updates.values()].some((trade) =>
     matchesTradeFilters(trade, request) && !visibleIds.has(trade.id));
 
+  const needsReconciliation = rowRemoved || sortChanged || hasUnseenTrades;
+
   return {
     ...page,
     trades,
-    pageInfo: rowRemoved ? { ...page.pageInfo, nextCursor: null } : page.pageInfo,
+    pageInfo: needsReconciliation ? { ...page.pageInfo, nextCursor: null } : page.pageInfo,
     hasNewTrades: page.hasNewTrades === true || hasUnseenTrades,
-    needsRefill: page.needsRefill === true || rowRemoved,
+    needsRefill: page.needsRefill === true || needsReconciliation,
   };
 }
 
