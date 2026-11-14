@@ -50,3 +50,9 @@ export function tradePage(trades: Trade[] = [], pageInfo: {
     },
   };
 }
+
+
+export const tradeOptions = {
+  instruments: [{ symbol: 'AAPL', name: 'Apple Inc.' }],
+  traders: [{ id: signedInTrader.id, displayName: signedInTrader.displayName }],
+};

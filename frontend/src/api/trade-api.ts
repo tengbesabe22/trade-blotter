@@ -11,10 +11,23 @@ import {
   type AmendTradeRequest,
 } from './trade-amend-contract';
 import { createTradeRequestSchema, createTradeResponseSchema, type CreateTradeRequest } from './trade-create-contract';
+import { tradeFilterOptionsSchema, type TradeFilterOptions } from './trade-filter-options-contract';
 import { ApiError, apiRequest } from './api-client';
 import { defaultTradeListQuery, tradeListQuerySchema, tradeListResponseSchema, type TradeListQuery, type TradeListResponse } from './trade-contract';
 
 export const tradeApi = {
+  filterOptions: async (signal?: AbortSignal): Promise<TradeFilterOptions> => {
+    const response = await apiRequest('/trades/filter-options', { signal });
+    const body: unknown = await response.json().catch(() => null);
+    const validation = tradeFilterOptionsSchema.safeParse(body);
+
+    if (!validation.success) {
+      throw new ApiError(response.status, 'INVALID_RESPONSE', 'The server returned unexpected trade options.');
+    }
+
+    return validation.data;
+  },
+
   cancel: async (tradeId: string, input: CancelTradeRequest) => {
     const id = cancelTradeIdSchema.parse(tradeId);
     const request = cancelTradeRequestSchema.parse(input);

@@ -92,12 +92,19 @@ still appear. Empty tables return empty arrays. The route validates the public
 response and strips extra fields; failures use the existing sanitized 500 response.
 Missing/expired sessions return 401. This passive read never renews idle time.
 
-**Caching plan:** the endpoint is implemented; browser lookup/caching is next.
-Fetch once when the signed-in workspace opens (again after a full browser refresh),
-cache in its TanStack Query client, and clear with the workspace on logout. Filter,
-sort, pagination and SSE changes reuse those options without another lookup.
-There is no polling or server-side catalogue cache. `Cache-Control: no-store`
-prevents HTTP caching; the proposed in-memory application cache is separate.
+**Shared frontend cache:** the contract, `tradeApi.filterOptions(signal)` and
+`useTradeOptions()` are implemented. The hook uses the existing workspace QueryClient
+and a separate `['trade-options']` key. Consumers share an in-flight request and
+completed results, including across temporary unmounts. Data stays fresh for the
+workspace lifetime; a new workspace/login gets a new client. Pending requests abort
+when the last consumer leaves. There is no polling, focus/reconnect reload or
+automatic retry; callers receive loading/error state and an explicit `refetch`.
+
+The hook is not mounted by the current UI yet. The searchable instrument dropdown
+will be its first consumer, followed by ticker/trader filters. That will fetch on
+workspace entry/full browser refresh and reuse options across filtering, sorting,
+pagination and SSE. No server catalogue cache is added. `Cache-Control: no-store`
+prevents HTTP caching; the in-memory application cache is separate.
 
 **Scaling path:** returning both complete lists is scoped to the small reference
 tables. For larger catalogues, use independent searchable dropdown lookups with
