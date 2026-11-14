@@ -8,8 +8,9 @@ client, ownership-aware row action and inline form are implemented.
 
 - **Amend** appears on your own ACTIVE rows. Other owners/cancelled rows show a dash;
   reviewers have no Actions column. Backend authorization still applies.
-- Selecting a row opens its prefilled form above the table. Ticker/trade ID are fixed
-  context. Finish or discard that edit before choosing another row.
+- Selecting a row opens its prefilled form in the shared lower-right panel.
+  Ticker/trade ID are fixed context. Finish or discard that edit before choosing
+  another row. Closing/success restores Create trade with its draft preserved.
 - Save sends only effective changed fields plus the optional reason and original
   version. Equivalent decimal formatting and reason-only edits make no request.
 - Pending saves disable duplicate submission and discard. Success closes the form,
@@ -20,12 +21,12 @@ client, ownership-aware row action and inline form are implemented.
   outcome; they do not retry automatically. Check the current trade before another
   intentional submission. Session expiry returns to sign-in.
 
-The form uses a responsive field layout, inline field errors and keyboard focus.
+The sidebar form uses two-column fields, inline field errors and keyboard focus.
 Opening focuses the panel; closing returns focus to the Trades heading.
 
 Manual check: sign in as a trader, amend an owned ACTIVE row's price, and save.
 A second signed-in window should receive the update. Try another trader's row and
-a reviewer account to check action visibility. Cancellation UI is still pending.
+a reviewer account to check action visibility. Cancellation uses the same sidebar slot.
 
 ## Editable fields
 

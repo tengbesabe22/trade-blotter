@@ -11,8 +11,10 @@ ownership/version checks, immediate cache updates and SSE delivery.
 **Next:** broader live-page reconciliation, filter controls, and deployment.
 The frontend supports login, session restoration, logout, and a read-only trade
 grid with server sorting, Previous/Next pagination, manual refresh, and loading/empty/error states.
-The desktop workspace places sorting controls and an always-open Create trade form
-to the right of the grid. Successful creation refreshes the current page.
+The desktop workspace places sorting controls and the default Create trade form
+to the right of the grid. Amend/Cancel temporarily replace creation in that panel,
+preserving its draft. Pending or unconfirmed creation blocks switching actions.
+Successful creation refreshes the current page.
 SSE inserts creation events directly into the default first-page cache. Other pages
 and sorts retain their position; the new-trade notice appears only on older pages.
 If a live insert changes a full page boundary, Refresh trades obtains a fresh cursor

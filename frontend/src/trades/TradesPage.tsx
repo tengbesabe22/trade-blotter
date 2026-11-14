@@ -27,9 +27,10 @@ type TradesPageProps = {
   user: CurrentUser;
   onSessionExpired: () => void;
   tradePanel?: ReactNode;
+  createSubmissionLocked?: boolean;
 };
 
-export function TradesPage({ user, onSessionExpired, tradePanel }: TradesPageProps) {
+export function TradesPage({ user, onSessionExpired, tradePanel, createSubmissionLocked = false }: TradesPageProps) {
   const [selectedAction, setSelectedAction] = useState<SelectedTradeAction | null>(null);
   const [savedTrade, setSavedTrade] = useState<Trade | null>(null);
   const [success, setSuccess] = useState('');
@@ -45,14 +46,16 @@ export function TradesPage({ user, onSessionExpired, tradePanel }: TradesPagePro
   const sessionExpired = query.error instanceof ApiError && query.error.status === 401;
 
   const openAmendment = useCallback((trade: Trade) => {
+    if (createSubmissionLocked) return;
     setSelectedAction((current) => current ?? { kind: 'amend', trade });
     setSuccess('');
-  }, []);
+  }, [createSubmissionLocked]);
 
   const openCancellation = useCallback((trade: Trade) => {
+    if (createSubmissionLocked) return;
     setSelectedAction((current) => current ?? { kind: 'cancel', trade });
     setSuccess('');
-  }, []);
+  }, [createSubmissionLocked]);
 
   function closeTradeAction() {
     setSelectedAction(null);
@@ -131,34 +134,6 @@ export function TradesPage({ user, onSessionExpired, tradePanel }: TradesPagePro
         ) : (
           <>
             {success && <p role="status" className="mx-4 mb-4 text-sm text-emerald-800 sm:mx-6">{success}</p>}
-            {selectedAction?.kind === 'amend' && (
-              <AmendTradeForm
-                key={selectedAction.trade.id}
-                trade={selectedAction.trade}
-                latestTrade={trades?.find((trade) => trade.id === selectedAction.trade.id)}
-                onSessionExpired={onSessionExpired}
-                onDiscard={closeTradeAction}
-                onAmended={(trade) => {
-                  setSavedTrade(trade);
-                  closeTradeAction();
-                  setSuccess('Trade amended: ' + trade.symbol + ' · ' + trade.id);
-                }}
-              />
-            )}
-            {selectedAction?.kind === 'cancel' && (
-              <CancelTradePanel
-                key={selectedAction.trade.id}
-                trade={selectedAction.trade}
-                latestTrade={trades?.find((trade) => trade.id === selectedAction.trade.id)}
-                onSessionExpired={onSessionExpired}
-                onClose={closeTradeAction}
-                onCancelled={(trade) => {
-                  setSavedTrade(trade);
-                  closeTradeAction();
-                  setSuccess('Trade cancelled: ' + trade.symbol + ' · ' + trade.id);
-                }}
-              />
-            )}
             <p aria-live="polite" className="px-4 pb-3 text-sm text-slate-600 sm:px-6">
               {streamStatus === 'connected' && query.isFetching
                 ? 'Synchronising live updates…'
@@ -200,7 +175,7 @@ export function TradesPage({ user, onSessionExpired, tradePanel }: TradesPagePro
                   {user.role === 'TRADER' && ' You can amend or cancel only your own active trades.'}
                 </p>
                 <Suspense fallback={<p role="status" className="p-10 text-center text-sm text-slate-600">Preparing trade table…</p>}>
-                  <TradeTable trades={trades} user={user} actionsDisabled={selectedAction !== null}
+                  <TradeTable trades={trades} user={user} actionsDisabled={selectedAction !== null || createSubmissionLocked}
                     onAmend={openAmendment} onCancel={openCancellation} />
                 </Suspense>
               </>
@@ -219,7 +194,38 @@ export function TradesPage({ user, onSessionExpired, tradePanel }: TradesPagePro
       {!sessionExpired && (
         <aside aria-label="Trade controls" className="flex min-w-0 flex-col gap-4">
           <TradeListControls query={queryOptions} onChange={changeQuery} />
-          {tradePanel}
+          {/* Keep creation mounted so switching panels never discards its draft. */}
+          <div hidden={selectedAction !== null} className={selectedAction ? 'hidden' : 'flex flex-1 flex-col'}>
+            {tradePanel}
+          </div>
+          {selectedAction?.kind === 'amend' && (
+            <AmendTradeForm
+              key={selectedAction.trade.id}
+              trade={selectedAction.trade}
+              latestTrade={trades?.find((trade) => trade.id === selectedAction.trade.id)}
+              onSessionExpired={onSessionExpired}
+              onDiscard={closeTradeAction}
+              onAmended={(trade) => {
+                setSavedTrade(trade);
+                closeTradeAction();
+                setSuccess('Trade amended: ' + trade.symbol + ' · ' + trade.id);
+              }}
+            />
+          )}
+          {selectedAction?.kind === 'cancel' && (
+            <CancelTradePanel
+              key={selectedAction.trade.id}
+              trade={selectedAction.trade}
+              latestTrade={trades?.find((trade) => trade.id === selectedAction.trade.id)}
+              onSessionExpired={onSessionExpired}
+              onClose={closeTradeAction}
+              onCancelled={(trade) => {
+                setSavedTrade(trade);
+                closeTradeAction();
+                setSuccess('Trade cancelled: ' + trade.symbol + ' · ' + trade.id);
+              }}
+            />
+          )}
         </aside>
       )}
     </div>

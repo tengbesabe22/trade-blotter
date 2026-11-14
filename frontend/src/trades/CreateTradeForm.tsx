@@ -1,4 +1,4 @@
-import { useRef, useState, type SubmitEvent } from 'react';
+import { useEffect, useRef, useState, type SubmitEvent } from 'react';
 import { ApiError } from '../api/api-client';
 import { tradeApi } from '../api/trade-api';
 import { createTradeRequestSchema, type CreateTradeRequest } from '../api/trade-create-contract';
@@ -7,6 +7,7 @@ import type { Trade } from '../api/trade-contract';
 type CreateTradeFormProps = {
   onCreated: (trade: Trade) => void;
   onSessionExpired: () => void;
+  onSubmissionLockChange?: (locked: boolean) => void;
 };
 
 function emptyForm() {
@@ -23,7 +24,7 @@ type FormValues = ReturnType<typeof emptyForm>;
 const inputClass = 'mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 focus-visible:outline-2 focus-visible:outline-blue-700 disabled:bg-slate-100';
 const buttonClass = 'min-h-11 rounded-lg px-4 py-2 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700 disabled:opacity-50';
 
-export function CreateTradeForm({ onCreated, onSessionExpired }: CreateTradeFormProps) {
+export function CreateTradeForm({ onCreated, onSessionExpired, onSubmissionLockChange }: CreateTradeFormProps) {
   const [values, setValues] = useState(emptyForm);
   const [errors, setErrors] = useState<Partial<Record<keyof FormValues, string>>>({});
   const [message, setMessage] = useState('');
@@ -33,6 +34,11 @@ export function CreateTradeForm({ onCreated, onSessionExpired }: CreateTradeForm
   // Retry the exact request/key after an uncertain response.
   const attempt = useRef<{ key: string; input: CreateTradeRequest } | null>(null);
   const submitting = useRef(false);
+
+  // Keep pending or unconfirmed creation visible until its outcome is resolved.
+  useEffect(() => {
+    onSubmissionLockChange?.(saving || uncertain);
+  }, [saving, uncertain, onSubmissionLockChange]);
 
   function update(field: keyof FormValues, value: string) {
     setValues((current) => ({ ...current, [field]: value }));

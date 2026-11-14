@@ -61,7 +61,7 @@ function showWorkspace(t: TestContext, transport: typeof fetch, role: 'TRADER' |
   return { fetchMock, page };
 }
 
-test('only own ACTIVE rows offer Amend, opening the selected trade above the table', async (t) => {
+test('only own ACTIVE rows offer Amend, opening the selected trade in the right-hand panel', async (t) => {
   const cancelled = { ...cancelledTrade, ownerId: signedInTrader.id };
   const other = { ...sampleTrade, id: 'f1550000-0000-4000-8000-000000100003', symbol: 'TSLA' };
   showWorkspace(t, async () => Response.json(tradePage([owned, other, cancelled])));
@@ -71,7 +71,8 @@ test('only own ACTIVE rows offer Amend, opening the selected trade above the tab
   const form = await screen.findByRole('form', { name: 'Amend trade' });
   assert.equal((screen.getByLabelText('Price (USD)') as HTMLInputElement).value, '227.4500');
   assert.equal(screen.queryByLabelText('Ticker'), null);
-  assert.ok(form.compareDocumentPosition(screen.getByRole('grid')) & dom.window.Node.DOCUMENT_POSITION_FOLLOWING);
+  assert.equal(screen.getByRole('complementary', { name: 'Trade controls' }).contains(form), true);
+  assert.equal(screen.getByRole('region', { name: 'Trades' }).contains(form), false);
   fireEvent.click(screen.getByRole('button', { name: 'Discard changes' }));
   assert.equal(screen.queryByRole('form', { name: 'Amend trade' }), null);
   assert.equal(document.activeElement?.id, 'trades-title');

@@ -55,7 +55,8 @@ Conflicts keep their details in `ApiError.responseBody` as `unknown`. Validate w
   have no Actions column; other owners and cancelled rows show a dash.
 - The panel shows read-only trade details and an optional reason. **Keep trade**
   closes without submitting; **Confirm cancellation** sends the captured version.
-  Only one amendment or cancellation panel can be open.
+  It replaces Create trade in the shared lower-right panel. Only one amendment
+  or cancellation panel can be open; closing/success restores the creation draft.
 - A newer version preserves the reason and blocks confirmation until **Review latest**
   is chosen. Confirmation is a separate action. Already-cancelled trades offer **Close**.
 - While submitting, editing, closing and duplicate submissions are disabled.

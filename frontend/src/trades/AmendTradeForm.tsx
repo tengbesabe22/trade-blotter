@@ -136,7 +136,7 @@ export function AmendTradeForm({ trade, latestTrade, onAmended, onDiscard, onSes
   }
 
   return (
-    <section ref={panel} tabIndex={-1} aria-labelledby="amend-title" className="mx-4 mb-4 rounded-xl border border-blue-200 bg-slate-50 p-4 focus-visible:outline-2 focus-visible:outline-blue-700 sm:mx-6 sm:p-6">
+    <section ref={panel} tabIndex={-1} aria-labelledby="amend-title" className="flex-1 rounded-xl border border-blue-200 bg-white p-4 focus-visible:outline-2 focus-visible:outline-blue-700 sm:p-6">
       <h2 id="amend-title" className="text-lg font-semibold text-slate-950">Amend {baseline.symbol}</h2>
       <p className="mt-1 break-all text-xs text-slate-600">Trade {baseline.id} · Version {baseline.version} · Ticker is fixed.</p>
       {currentTrade && (
@@ -147,13 +147,13 @@ export function AmendTradeForm({ trade, latestTrade, onAmended, onDiscard, onSes
       )}
       {message && <p role="alert" className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-800">{message}</p>}
       <form aria-label="Amend trade" onSubmit={(event) => { void submit(event); }} noValidate>
-        <fieldset disabled={saving || cancelled} className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <fieldset disabled={saving || cancelled} className="mt-4 grid gap-4 grid-cols-2">
           {([
             ['quantity', 'Quantity', 'text'], ['price', 'Price (USD)', 'text'],
             ['tradeDate', 'Execution time (UTC)', 'datetime-local'],
             ['book', 'Book', 'text'], ['counterparty', 'Counterparty', 'text'],
           ] as const).map(([field, label, type]) => (
-            <div key={field} className="text-sm font-medium text-slate-700">
+            <div key={field} className={'text-sm font-medium text-slate-700' + (field === 'tradeDate' ? ' col-span-2' : '')}>
               <label htmlFor={'amend-' + field}>{label}</label>
               <input id={'amend-' + field} className={inputClass} type={type} value={values[field]}
                 step={type === 'datetime-local' ? '0.001' : undefined}
@@ -170,7 +170,7 @@ export function AmendTradeForm({ trade, latestTrade, onAmended, onDiscard, onSes
               <option value="BUY">Buy</option><option value="SELL">Sell</option>
             </select>
           </label>
-          <label className="text-sm font-medium text-slate-700 sm:col-span-2 lg:col-span-3">
+          <label className="text-sm font-medium text-slate-700 col-span-2">
             Reason (optional)
             <textarea className={inputClass + ' py-2'} value={values.reason} maxLength={500} rows={2}
               aria-invalid={Boolean(errors.reason)} aria-describedby={errors.reason ? 'amend-reason-error' : undefined}

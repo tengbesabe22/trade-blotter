@@ -69,7 +69,8 @@ test('only own ACTIVE rows offer Cancel trade, opening a read-only summary witho
   fireEvent.click(await screen.findByRole('button', { name: `Cancel AAPL trade ${owned.id}` }));
   const form = await screen.findByRole('form', { name: 'Cancel trade' });
   assert.equal(screen.getAllByRole('button', { name: /^Cancel .* trade / }).length, 1);
-  assert.ok(form.compareDocumentPosition(screen.getByRole('grid')) & dom.window.Node.DOCUMENT_POSITION_FOLLOWING);
+  assert.equal(screen.getByRole('complementary', { name: 'Trade controls' }).contains(form), true);
+  assert.equal(screen.getByRole('region', { name: 'Trades' }).contains(form), false);
   assert.ok(screen.getByText('Cancel AAPL trade?'));
   assert.equal(screen.queryByLabelText('Price (USD)') === null, true);
   assert.equal(screen.getByRole('button', { name: /^Amend / }).hasAttribute('disabled'), true);

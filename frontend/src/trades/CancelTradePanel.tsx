@@ -84,10 +84,10 @@ export function CancelTradePanel({ trade, latestTrade, onCancelled, onClose, onS
   }
 
   return (
-    <section ref={panel} tabIndex={-1} aria-labelledby="cancel-title" className="mx-4 mb-4 rounded-xl border border-red-200 bg-white p-4 focus-visible:outline-2 focus-visible:outline-red-700 sm:mx-6 sm:p-6">
+    <section ref={panel} tabIndex={-1} aria-labelledby="cancel-title" className="flex-1 rounded-xl border border-red-200 bg-white p-4 focus-visible:outline-2 focus-visible:outline-red-700 sm:p-6">
       <h2 id="cancel-title" className="text-lg font-semibold text-slate-950">Cancel {baseline.symbol} trade?</h2>
       <p className="mt-1 break-all text-xs text-slate-600">Trade {baseline.id} · Version {baseline.version}</p>
-      <dl className="mt-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+      <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
         {([
           ['Side', baseline.side], ['Quantity', baseline.quantity], ['Price (USD)', baseline.price],
           ['Execution time (UTC)', baseline.tradeDate.replace('T', ' ').replace('Z', '')],
