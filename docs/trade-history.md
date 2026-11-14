@@ -2,7 +2,8 @@
 
 **Implemented:** Prisma model, append-only SQL migration and seeded histories.
 Create, amend and cancel write audit entries transactionally. The history read
-contract, repository reads and GET endpoint are implemented. The history UI is next.
+contract, repository reads, GET endpoint and frontend API client are implemented.
+The history UI is next.
 
 ## Stored entry
 
@@ -116,6 +117,18 @@ sanitized 500 INTERNAL_ERROR handler. Responses use Cache-Control: no-store.
 Foreground reads record session activity; the existing background-request header
 suppresses idle renewal while preserving all session checks. The history UI is next.
 
+## Frontend client
+
+`tradeApi.history(tradeId, signal?, activity?)` fetches the complete history using
+same-origin session cookies. It validates/normalizes the trade UUID before fetching,
+validates the response with the browser history contract and verifies its trade ID
+matches the request. Invalid success payloads produce INVALID_RESPONSE; HTTP, network
+and cancellation errors are preserved for the view. It adds no automatic retries.
+
+The optional AbortSignal cancels an obsolete request. Activity defaults to user;
+automatic refreshes can pass background to preserve the existing idle-time policy.
+No query cache hook, row action, navigation or history UI is added in this slice.
+
 ## Verification
 
 Disposable PostgreSQL 18 checks covered the three actions, required actors, an
@@ -137,6 +150,9 @@ Eleven HTTP route tests use the real app/session middleware with fake repositori
 They cover missing/expired sessions, both roles reading another trader's history,
 UUID normalization/validation, missing trades, empty results, sanitized failures,
 invalid/private repository output and foreground/background activity handling.
+Fourteen frontend contract/client tests cover lifecycle entries, exact decimals,
+nullable metadata, empty/long histories, invalid payloads, matching trade identity,
+cookies, abort signals, HTTP/network errors and background request handling.
 No live-database test dependency was added.
 
 Reference: [PostgreSQL statement-level triggers](https://www.postgresql.org/docs/18/sql-createtrigger.html).

@@ -12,10 +12,31 @@ import {
 } from './trade-amend-contract';
 import { createTradeRequestSchema, createTradeResponseSchema, type CreateTradeRequest } from './trade-create-contract';
 import { tradeFilterOptionsSchema, type TradeFilterOptions } from './trade-filter-options-contract';
+import { tradeHistoryIdSchema, tradeHistoryResponseSchema, type TradeHistoryResponse } from './trade-history-contract';
 import { ApiError, apiRequest } from './api-client';
 import { defaultTradeListQuery, tradeListQuerySchema, tradeListResponseSchema, type TradeListQuery, type TradeListResponse } from './trade-contract';
 
 export const tradeApi = {
+  history: async (
+    tradeId: string,
+    signal?: AbortSignal,
+    activity: 'user' | 'background' = 'user',
+  ): Promise<TradeHistoryResponse> => {
+    const id = tradeHistoryIdSchema.parse(tradeId);
+    const response = await apiRequest(`/trades/${id}/history`, {
+      signal,
+      headers: activity === 'background' ? { 'X-Session-Activity': 'background' } : undefined,
+    });
+    const body: unknown = await response.json().catch(() => null);
+    const validation = tradeHistoryResponseSchema.safeParse(body);
+
+    if (!validation.success || validation.data.tradeId !== id) {
+      throw new ApiError(response.status, 'INVALID_RESPONSE', 'The server returned unexpected trade history.');
+    }
+
+    return validation.data;
+  },
+
   filterOptions: async (signal?: AbortSignal): Promise<TradeFilterOptions> => {
     const response = await apiRequest('/trades/filter-options', { signal });
     const body: unknown = await response.json().catch(() => null);
