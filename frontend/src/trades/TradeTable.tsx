@@ -69,28 +69,35 @@ type TradeTableProps = {
   user: CurrentUser;
   onAmend: (trade: Trade) => void;
   onCancel: (trade: Trade) => void;
+  onHistory: (trade: Trade) => void;
   actionsDisabled: boolean;
 };
 
-export function TradeTable({ trades, user, onAmend, onCancel, actionsDisabled }: TradeTableProps) {
+export function TradeTable({ trades, user, onAmend, onCancel, onHistory, actionsDisabled }: TradeTableProps) {
   const actionColumn = useMemo<ColDef<Trade>>(() => ({
-    colId: 'actions', headerName: 'Actions', pinned: 'right', width: 88, minWidth: 88,
+    colId: 'actions', headerName: 'Actions', pinned: 'right', width: user.role === 'TRADER' ? 124 : 80, minWidth: user.role === 'TRADER' ? 124 : 80,
     cellStyle: { paddingLeft: 8, paddingRight: 8 },
     cellRenderer: ({ data }: CustomCellRendererProps<Trade>) => {
-      if (!data || data.ownerId !== user.id || data.status !== 'ACTIVE') return null;
+      if (!data) return null;
+      const canEdit = user.role === 'TRADER' && data.ownerId === user.id && data.status === 'ACTIVE';
       return (
         <div className="flex h-full items-center gap-1">
-          <TradeActionButton action="amend" label={`Amend ${data.symbol} trade ${data.id}`}
-            disabled={actionsDisabled} onClick={() => onAmend(data)} />
-          <TradeActionButton action="cancel" label={`Cancel ${data.symbol} trade ${data.id}`}
-            disabled={actionsDisabled} onClick={() => onCancel(data)} />
+          <TradeActionButton action="history" label={`History ${data.symbol} trade ${data.id}`}
+            disabled={actionsDisabled} onClick={() => onHistory(data)} />
+          {canEdit && (
+            <>
+              <TradeActionButton action="amend" label={`Amend ${data.symbol} trade ${data.id}`}
+                disabled={actionsDisabled} onClick={() => onAmend(data)} />
+              <TradeActionButton action="cancel" label={`Cancel ${data.symbol} trade ${data.id}`}
+                disabled={actionsDisabled} onClick={() => onCancel(data)} />
+            </>
+          )}
         </div>
       );
     },
-  }), [user.id, onAmend, onCancel, actionsDisabled]);
+  }), [user.id, user.role, onAmend, onCancel, onHistory, actionsDisabled]);
   // Live row changes must not rebuild column definitions and reset resized widths.
-  const tableColumns = useMemo(() => user.role === 'TRADER' ? [...columns, actionColumn] : columns,
-    [user.role, actionColumn]);
+  const tableColumns = useMemo(() => [...columns, actionColumn], [actionColumn]);
 
   return (
     <div className="relative min-h-72 w-full flex-1">

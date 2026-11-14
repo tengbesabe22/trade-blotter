@@ -3,7 +3,7 @@
 **Implemented:** Prisma model, append-only SQL migration and seeded histories.
 Create, amend and cancel write audit entries transactionally. The history read
 contract, repository reads, GET endpoint and frontend API client are implemented.
-The history UI is next.
+The separate history view is implemented.
 
 ## Stored entry
 
@@ -115,7 +115,7 @@ IDs return 400 INVALID_INPUT; missing trades return 404 TRADE_NOT_FOUND. Missing
 expired sessions return 401. Repository/response validation errors use the existing
 sanitized 500 INTERNAL_ERROR handler. Responses use Cache-Control: no-store.
 Foreground reads record session activity; the existing background-request header
-suppresses idle renewal while preserving all session checks. The history UI is next.
+suppresses idle renewal while preserving all session checks. The separate history view is implemented.
 
 ## Frontend client
 
@@ -127,7 +127,29 @@ and cancellation errors are preserved for the view. It adds no automatic retries
 
 The optional AbortSignal cancels an obsolete request. Activity defaults to user;
 automatic refreshes can pass background to preserve the existing idle-time policy.
-No query cache hook, row action, navigation or history UI is added in this slice.
+
+## History view
+
+A clock icon with a Trade history tooltip is available on every trade row for both
+roles, including other traders' and cancelled trades. Amend/cancel stay restricted
+to the owning trader's ACTIVE rows. History navigation is disabled while a mutation
+panel is open or creation is submitting, so drafts are not interrupted.
+
+`TradeHistoryPage` opens as a separate view. Its query key is
+`['trade-history', trade.id]`; the query forwards cancellation, performs no automatic
+retries or focus/reconnect refresh, and releases its cache when closed. Reopening
+fetches current history. Refresh history explicitly reloads while retaining existing
+entries on ordinary failures. A 401 hides history and offers sign-in; a 404 explains
+that the trade is missing. Loading, empty and unavailable-predecessor states are
+explicit. Lifecycle cards show who/when/reason, before/after fields, exact decimals
+and UTC times; creation or a missing predecessor shows the saved trade terms.
+
+`TradesPage` keeps the blotter mounted but hidden while history is open, preserving
+filters, cursor navigation, grid state, the Create draft and its existing SSE
+connection. Back to trades restores focus to the blotter heading. History gets focus
+when opened and its pending read is cancelled when closed. No router or extra SSE
+connection is added. History refresh is manual in this slice; automatic history
+invalidation from trade events remains a separate refinement.
 
 ## Verification
 
@@ -153,6 +175,12 @@ invalid/private repository output and foreground/background activity handling.
 Fourteen frontend contract/client tests cover lifecycle entries, exact decimals,
 nullable metadata, empty/long histories, invalid payloads, matching trade identity,
 cookies, abort signals, HTTP/network errors and background request handling.
+Eleven history UI cases cover rendering/loading, empty/missing/error/expiry states,
+retry, cached failures, request cancellation, both roles reading cancelled trades
+and returning with filters, pagination and a creation draft intact. The shared icon
+test also covers the History tooltip. Existing ownership tests still verify that
+reviewers and other traders cannot amend/cancel. UI tests run in jsdom with the real
+grid/query components and fake HTTP responses.
 No live-database test dependency was added.
 
 Reference: [PostgreSQL statement-level triggers](https://www.postgresql.org/docs/18/sql-createtrigger.html).

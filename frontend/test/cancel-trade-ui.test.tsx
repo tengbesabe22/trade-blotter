@@ -82,10 +82,11 @@ test('only own ACTIVE rows offer Cancel trade, opening a read-only summary witho
   assert.equal(h.fetchMock.mock.callCount(), 1);
 });
 
-test('reviewers have no cancellation action or Actions column', async (t) => {
+test('reviewers have a history action without cancellation controls', async (t) => {
   showWorkspace(t, async () => Response.json(tradePage([owned])), 'READ_ONLY');
   await screen.findByText('AAPL');
-  assert.equal(screen.queryByRole('columnheader', { name: 'Actions' }) === null, true);
+  assert.ok(screen.getByRole('columnheader', { name: 'Actions' }));
+  assert.ok(screen.getByRole('button', { name: /^History / }));
   assert.equal(screen.queryByRole('button', { name: /^Cancel .* trade / }) === null, true);
 });
 

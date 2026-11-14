@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useId, useRef, useState, type MouseEvent } from 'react';
 import { createPortal } from 'react-dom';
 
+const actionLabels = { amend: 'Amend trade', cancel: 'Cancel trade', history: 'Trade history' };
+
 type TradeActionButtonProps = {
-  action: 'amend' | 'cancel';
+  action: 'amend' | 'cancel' | 'history';
   label: string;
   disabled: boolean;
   onClick: () => void;
@@ -57,12 +59,16 @@ export function TradeActionButton({ action, label, disabled, onClick }: TradeAct
         onMouseEnter={showTooltip} onMouseLeave={hideOnLeave} onFocus={showTooltip} onBlur={() => setPosition(null)}
         onClick={() => { setPosition(null); onClick(); }}
         className={'flex size-8 shrink-0 items-center justify-center rounded focus-visible:outline-2 disabled:opacity-50 ' +
-          (action === 'amend' ? 'text-blue-700 hover:bg-blue-50 focus-visible:outline-blue-700' : 'text-red-700 hover:bg-red-50 focus-visible:outline-red-700')}>
+          (action === 'cancel' ? 'text-red-700 hover:bg-red-50 focus-visible:outline-red-700' : 'text-blue-700 hover:bg-blue-50 focus-visible:outline-blue-700')}>
         <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" className="size-4.5" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
-          {action === 'amend' ? (
+          {action === 'amend' && (
             <path d="m15 5 4 4M4 20l5-1L20 8a2.8 2.8 0 0 0-4-4L5 15z" />
-          ) : (
+          )}
+          {action === 'cancel' && (
             <><circle cx="12" cy="12" r="9" /><path d="m9 9 6 6m0-6-6 6" /></>
+          )}
+          {action === 'history' && (
+            <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>
           )}
         </svg>
       </button>
@@ -72,7 +78,7 @@ export function TradeActionButton({ action, label, disabled, onClick }: TradeAct
           onMouseLeave={hideOnLeave}
           className="fixed z-50 -translate-x-1/2 -translate-y-full pb-1">
           <div className="whitespace-nowrap rounded bg-slate-900 px-2 py-1 text-xs text-white shadow-sm">
-            {action === 'amend' ? 'Amend trade' : 'Cancel trade'}
+            {actionLabels[action]}
           </div>
         </div>, document.body,
       )}

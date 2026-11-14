@@ -69,9 +69,9 @@ test('only own ACTIVE rows offer Amend, opening the selected trade in the right-
   const button = await screen.findByRole('button', { name: `Amend AAPL trade ${owned.id}` });
   assert.equal(screen.getAllByRole('button', { name: /^Amend / }).length, 1);
   const actionCells = screen.getByRole('grid').querySelectorAll('[role="gridcell"][col-id="actions"]');
-  const unavailable = [...actionCells].filter((cell) => !cell.querySelector('button'));
+  const unavailable = [...actionCells].filter((cell) => !cell.querySelector('button[aria-label^="Amend "]'));
   assert.equal(unavailable.length, 2);
-  assert.equal(unavailable.every((cell) => cell.textContent === ''), true);
+  assert.equal(unavailable.every((cell) => cell.querySelector('button[aria-label^="History "]') !== null), true);
   fireEvent.click(button);
   const form = await screen.findByRole('form', { name: 'Amend trade' });
   assert.equal((screen.getByLabelText('Price (USD)') as HTMLInputElement).value, '227.4500');
@@ -83,10 +83,11 @@ test('only own ACTIVE rows offer Amend, opening the selected trade in the right-
   assert.equal(document.activeElement?.id, 'trades-title');
 });
 
-test('reviewers have no Actions column or amendment controls', async (t) => {
+test('reviewers have a history action without amendment controls', async (t) => {
   showWorkspace(t, async () => Response.json(tradePage([owned])), 'READ_ONLY');
   await screen.findByText('AAPL');
-  assert.equal(screen.queryByRole('columnheader', { name: 'Actions' }), null);
+  assert.ok(screen.getByRole('columnheader', { name: 'Actions' }));
+  assert.ok(screen.getByRole('button', { name: /^History / }));
   assert.equal(screen.queryByRole('button', { name: /^Amend / }), null);
 });
 

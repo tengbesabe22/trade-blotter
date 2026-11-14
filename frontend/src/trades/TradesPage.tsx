@@ -7,6 +7,7 @@ import { useLiveTrades, type StreamStatus } from './useLiveTrades';
 import { defaultTradeListQuery, type TradeListQuery, type Trade } from '../api/trade-contract';
 import { TradeListControls } from './TradeListControls';
 import { TradePagination } from './TradePagination';
+import { TradeHistoryPage } from './TradeHistoryPage';
 
 // Load the grid only when there are rows to display, keeping login lightweight.
 const TradeTable = lazy(async () => {
@@ -31,6 +32,7 @@ type TradesPageProps = {
 };
 
 export function TradesPage({ user, onSessionExpired, tradePanel, createSubmissionLocked = false }: TradesPageProps) {
+  const [selectedHistory, setSelectedHistory] = useState<Trade | null>(null);
   const [selectedAction, setSelectedAction] = useState<SelectedTradeAction | null>(null);
   const [savedTrade, setSavedTrade] = useState<Trade | null>(null);
   const [success, setSuccess] = useState('');
@@ -64,6 +66,16 @@ export function TradesPage({ user, onSessionExpired, tradePanel, createSubmissio
     setSelectedAction((current) => current ?? { kind: 'cancel', trade });
     setSuccess('');
   }, [createSubmissionLocked]);
+
+  const openHistory = useCallback((trade: Trade) => {
+    if (!createSubmissionLocked) setSelectedHistory(trade);
+  }, [createSubmissionLocked]);
+
+  function closeHistory() {
+    setSelectedHistory(null);
+    // Restore focus after the blotter becomes visible again.
+    requestAnimationFrame(() => tradesTitle.current?.focus());
+  }
 
   function closeTradeAction() {
     setSelectedAction(null);
@@ -102,7 +114,7 @@ export function TradesPage({ user, onSessionExpired, tradePanel, createSubmissio
     }
   }
 
-  return (
+  const blotter = (
     <div className="grid min-h-[calc(100svh-6rem)] grid-cols-[minmax(0,1fr)_24rem] items-stretch gap-4">
       <section aria-labelledby="trades-title" className="flex min-w-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 p-4 sm:px-6">
@@ -184,7 +196,7 @@ export function TradesPage({ user, onSessionExpired, tradePanel, createSubmissio
                 </p>
                 <Suspense fallback={<p role="status" className="p-10 text-center text-sm text-slate-600">Preparing trade table…</p>}>
                   <TradeTable trades={trades} user={user} actionsDisabled={selectedAction !== null || createSubmissionLocked}
-                    onAmend={openAmendment} onCancel={openCancellation} />
+                    onAmend={openAmendment} onCancel={openCancellation} onHistory={openHistory} />
                 </Suspense>
               </>
             )}
@@ -237,5 +249,15 @@ export function TradesPage({ user, onSessionExpired, tradePanel, createSubmissio
         </aside>
       )}
     </div>
+  );
+
+  return (
+    <>
+      {/* Keep the blotter and SSE mounted to preserve filters, page, widths and drafts. */}
+      <div hidden={selectedHistory !== null}>{blotter}</div>
+      {selectedHistory && (
+        <TradeHistoryPage trade={selectedHistory} onBack={closeHistory} onSessionExpired={onSessionExpired} />
+      )}
+    </>
   );
 }

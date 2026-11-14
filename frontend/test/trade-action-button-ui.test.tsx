@@ -15,7 +15,7 @@ const { render, screen, fireEvent, act, cleanup } = await import('@testing-libra
 afterEach(() => cleanup());
 after(() => dom.window.close());
 
-for (const action of ['amend', 'cancel'] as const) {
+for (const action of ['amend', 'cancel', 'history'] as const) {
   test(`${action} uses an icon with an accessible name and a hover/focus tooltip`, () => {
     const label = `${action} AAPL trade trade-1`;
     render(<TradeActionButton action={action} label={label} disabled={false} onClick={() => {}} />);
@@ -24,7 +24,7 @@ for (const action of ['amend', 'cancel'] as const) {
     assert.equal(button.querySelector('svg')?.getAttribute('aria-hidden'), 'true');
     assert.equal(screen.queryByRole('tooltip') === null, true);
     fireEvent.mouseEnter(button);
-    assert.equal(screen.getByRole('tooltip').textContent, action === 'amend' ? 'Amend trade' : 'Cancel trade');
+    assert.equal(screen.getByRole('tooltip').textContent, action === 'amend' ? 'Amend trade' : action === 'cancel' ? 'Cancel trade' : 'Trade history');
     assert.equal(button.getAttribute('aria-describedby'), screen.getByRole('tooltip').id);
     fireEvent.mouseLeave(button);
     assert.equal(screen.queryByRole('tooltip') === null, true);
