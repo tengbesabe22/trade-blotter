@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { tradeChangeSchema, tradeChangeWithSummariesSchema } from '../src/trades/sse/trade-stream-contract';
+import { tradeChangeSchema } from '../src/trades/sse/trade-stream-contract';
 
 const trade = {
   id: 'f1550000-0000-4000-8000-000000100003',
@@ -17,13 +17,13 @@ const summary = {
   version: 9, updatedAt: '2026-11-15T09:00:00.000Z',
 };
 const change = {
-  schemaVersion: 2, changeId: 'd197282d-99ca-4260-833a-702f97d1cba2',
+  changeId: 'd197282d-99ca-4260-833a-702f97d1cba2',
   type: 'TRADE_CREATED', occurredAt: '2026-11-15T09:00:00.000Z', trade,
   summaries: [summary],
 };
 
-test('version-two events preserve the complete trade and absolute symbol summary', () => {
-  assert.deepEqual(tradeChangeWithSummariesSchema.parse(change), change);
+test('events use one shape with the complete trade and absolute symbol summary', () => {
+  assert.deepEqual(tradeChangeSchema.parse(change), change);
 });
 
 test('amendment and cancellation events use the same resulting-summary contract', () => {
@@ -34,12 +34,12 @@ test('amendment and cancellation events use the same resulting-summary contract'
     summaries: [{ ...summary, buyQuantity: '50.000000', netQuantity: '20.000000',
       buyValue: '11372.5000000000', version: 11 }] };
   for (const event of [amended, cancelled]) {
-    assert.deepEqual(tradeChangeWithSummariesSchema.parse(event), event);
+    assert.deepEqual(tradeChangeSchema.parse(event), event);
   }
 });
 
 test('summary revisions are independent of the changed trade revision', () => {
-  const result = tradeChangeWithSummariesSchema.parse(change);
+  const result = tradeChangeSchema.parse(change);
   assert.equal(result.trade.version, 1);
   assert.equal(result.summaries[0]!.version, 9);
 });
@@ -47,24 +47,24 @@ test('summary revisions are independent of the changed trade revision', () => {
 test('metadata-only amendments can carry no summary updates', () => {
   const event = { ...change, type: 'TRADE_AMENDED',
     trade: { ...trade, book: 'EQUITIES_US', version: 2 }, summaries: [] };
-  assert.deepEqual(tradeChangeWithSummariesSchema.parse(event), event);
+  assert.deepEqual(tradeChangeSchema.parse(event), event);
 });
 
 test('creation and cancellation must include their affected summary', () => {
   for (const type of ['TRADE_CREATED', 'TRADE_CANCELLED']) {
-    assert.equal(tradeChangeWithSummariesSchema.safeParse({ ...change, type, summaries: [] }).success, false);
+    assert.equal(tradeChangeSchema.safeParse({ ...change, type, summaries: [] }).success, false);
   }
 });
 
 test('one trade can update at most one desk summary because its symbol is immutable', () => {
   for (const second of [summary, { ...summary,
     instrumentId: '7768fed5-b612-4844-8b84-e9db63a31d06', symbol: 'MSFT' }]) {
-    assert.equal(tradeChangeWithSummariesSchema.safeParse({ ...change, summaries: [summary, second] }).success, false);
+    assert.equal(tradeChangeSchema.safeParse({ ...change, summaries: [summary, second] }).success, false);
   }
 });
 
 test('the summary symbol must match the changed trade', () => {
-  assert.equal(tradeChangeWithSummariesSchema.safeParse({
+  assert.equal(tradeChangeSchema.safeParse({
     ...change, summaries: [{ ...summary, symbol: 'MSFT' }],
   }).success, false);
 });
@@ -77,31 +77,31 @@ test('event summaries reuse the exact decimal, revision and public-field rules',
     { ...summary, version: -1 },
     { ...summary, email: 'private@example.com' },
   ]) {
-    assert.equal(tradeChangeWithSummariesSchema.safeParse({ ...change, summaries: [invalidSummary] }).success, false);
+    assert.equal(tradeChangeSchema.safeParse({ ...change, summaries: [invalidSummary] }).success, false);
   }
   const flat = { ...summary, buyQuantity: '0.000000', sellQuantity: '0.000000', netQuantity: '0.000000',
     buyValue: '0.0000000000', sellValue: '0.0000000000' };
-  assert.equal(tradeChangeWithSummariesSchema.safeParse({ ...change, type: 'TRADE_CANCELLED',
+  assert.equal(tradeChangeSchema.safeParse({ ...change, type: 'TRADE_CANCELLED',
     trade: { ...trade, status: 'CANCELLED', version: 2 }, summaries: [flat] }).success, true);
 });
 
-test('the expanded contract requires summaries and retains envelope validation', () => {
+test('the event contract requires summaries and validates its envelope', () => {
   const { summaries: omitted, ...withoutSummaries } = change;
   assert.equal(omitted.length, 1);
   for (const invalid of [
     withoutSummaries, { ...change, summaries: null }, { ...change, summaries: {} },
-    { ...change, schemaVersion: 1 }, { ...change, changeId: 'invalid' },
+    { ...change, changeId: 'invalid' },
     { ...change, type: 'UNKNOWN' }, { ...change, occurredAt: '2026-11-15' },
     { ...change, trade: { ...trade, quantity: 100 } }, { ...change, extra: true },
-  ]) assert.equal(tradeChangeWithSummariesSchema.safeParse(invalid).success, false);
+  ]) assert.equal(tradeChangeSchema.safeParse(invalid).success, false);
 });
 
-test('the existing trade-only contract remains valid until delivery and browser support change', () => {
-  const legacy = {
-    schemaVersion: 1, changeId: change.changeId, type: change.type,
-    occurredAt: change.occurredAt, trade,
+test('trade-only and format-versioned events are rejected', () => {
+  const tradeOnly = {
+    changeId: change.changeId, type: change.type, occurredAt: change.occurredAt, trade,
   };
-  assert.deepEqual(tradeChangeSchema.parse(legacy), legacy);
-  assert.equal(tradeChangeSchema.safeParse(change).success, false);
-  assert.equal(tradeChangeWithSummariesSchema.safeParse(legacy).success, false);
+  assert.equal(tradeChangeSchema.safeParse(tradeOnly).success, false);
+  for (const schemaVersion of [1, 2]) {
+    assert.equal(tradeChangeSchema.safeParse({ ...change, schemaVersion }).success, false);
+  }
 });

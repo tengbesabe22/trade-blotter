@@ -3,8 +3,9 @@
 **Implemented:** calculation helper, SymbolSummary model/migration and seeded totals.
 The local database has been reset and reseeded. Create, amend and cancel now update
 summaries transactionally. The read response contract, repository, mapper and GET endpoint are implemented/tested.
-The version-2 SSE contract is defined/tested. Create, amend and cancel capture their
-resulting summary snapshots in the outbox. Summary delivery and UI remain planned.
+Create, amend and cancel capture their resulting summary snapshots in the outbox;
+the relayer sends one event shape containing trade and summaries, with no format
+version. Trade and summary revisions remain independent. Summary cache integration and the docked UI remain planned.
 
 ## Scope
 
@@ -134,8 +135,8 @@ fake persistence. Coverage includes returned aggregate versions/times, BUY/SELL 
 large exact amounts, invalid snapshots, failure paths, replay paths, and compatibility
 with old/raw and new/wrapped creation payloads. All 413 backend tests, root typecheck
 and backend build pass. These checks do not exercise real PostgreSQL concurrency.
-HTTP/idempotency responses remain {trade}; summary snapshots are stored but not sent
-to browsers yet. The relayer publishes the validated trade-only version-1 event.
+HTTP/idempotency responses remain {trade}. The relayer now publishes the stored
+trade and summary snapshots through the single trade.changed contract.
 
 ## Amendment and cancellation transactions
 
@@ -167,10 +168,9 @@ PostgreSQL concurrency/rollback checks. No schema/data or API/SSE shape change.
 
 The amend/cancel capture slice passes all 40 repository cases and 14 relayer cases.
 Tests cover captured aggregate totals/revisions/times, metadata-only empty arrays,
-retained zero rows, invalid snapshots aborting the transaction, and current/legacy
-payload compatibility. All 416 backend tests, root typecheck and backend build pass.
+retained zero rows and invalid snapshots aborting the transaction. All 416 backend tests, root typecheck and backend build pass.
 Persistence is faked; no live PostgreSQL concurrency/rollback check was added. HTTP
-responses remain {trade}; current SSE remains version-1 trade-only delivery.
+responses remain {trade}; SSE carries the trade and captured summaries.
 
 ## Read response contract
 
@@ -241,12 +241,14 @@ ACTIVE trade aggregates. This verification changed no data and is not a CI depen
 
 ## Next slice
 
-The expanded SSE contract is defined separately from current version-1 delivery; see
-[the event contract](trade-stream-api.md#summary-event-contract-defined-not-yet-sent).
-Create/amend/cancel now capture resulting summaries in outbox records. Next wire
-version-2 event delivery and browser support, then add the docked panel. All mutations maintain totals from
-a correct starting state; earlier drift is not repaired automatically. Valuation
-marks and indicative P&L remain later work.
+[Summary events](trade-stream-api.md#summary-events) now carry the saved snapshots.
+Next load the summary baseline, merge snapshots independently by instrument/version,
+and render the docked panel. All mutations maintain totals from a correct starting
+state; earlier drift is not repaired automatically.
+
+P&L is deferred as an optional follow-up. Finish current Position Summary first,
+then prioritize documentation cleanup, backend logging, p95/p99 load measurements
+and deployment. Do not add valuation marks or P&L implementation to these slices.
 
 References: [Decimal.js independent constructors](https://mikemcl.github.io/decimal.js/#Dclone),
 [IBKR daily trade log](https://www.ibkrguides.com/traderworkstation/trade-log.htm),

@@ -55,9 +55,20 @@ const newer = {
   tradeDate: '2026-11-13T09:00:00.000Z',
 };
 const change = {
-  schemaVersion: 1, changeId: 'd197282d-99ca-4260-833a-702f97d1cba9',
+  changeId: 'd197282d-99ca-4260-833a-702f97d1cba9',
   type: 'TRADE_CREATED', occurredAt: ready.serverTime, trade: newer,
+  summaries: [{
+    instrumentId: '7768fed5-b612-4844-8b84-e9db63a31d05', symbol: newer.symbol, currency: 'USD',
+    buyQuantity: newer.quantity, sellQuantity: '0.000000', netQuantity: newer.quantity,
+    buyValue: '1137250.5002274501', sellValue: '0.0000000000',
+    version: 9, updatedAt: ready.serverTime,
+  }],
 };
+
+// UI tests replace trade fields; the snapshot fixture must refer to the same symbol.
+function withMatchingSummary<T extends { trade: { symbol: string } }>(event: T) {
+  return { ...event, summaries: [{ ...change.summaries[0]!, symbol: event.trade.symbol }] };
+}
 
 function setup(t: TestContext, transport: typeof fetch = async () => Response.json(tradePage([sampleTrade]))) {
   const client = new QueryClient();
@@ -102,7 +113,7 @@ test('events during initial load and a manual refresh survive older HTTP respons
   fireEvent.click(screen.getByRole('button', { name: 'Refresh trades' }));
   const updated = { ...newer, version: 2, price: '250.0000' };
   await act(async () => {
-    h.source.emit('trade.changed', { ...change, trade: updated });
+    h.source.emit('trade.changed', withMatchingSummary({ ...change, trade: updated }));
     finish(Response.json(tradePage([sampleTrade, newer])));
   });
   await waitFor(() => assert.equal(h.page()?.trades.find((trade) => trade.id === newer.id)?.version, 2));
@@ -151,7 +162,7 @@ test('invalid event data closes the source and leaves cached trades intact', asy
   const h = setup(t);
   await act(async () => { h.source.emit('stream.ready', ready); });
   await screen.findByText('AAPL');
-  await act(async () => { h.source.emit('trade.changed', { ...change, trade: { ...newer, price: 250 } }); });
+  await act(async () => { h.source.emit('trade.changed', withMatchingSummary({ ...change, trade: { ...newer, price: 250 } })); });
   assert.equal(h.source.closed, true);
   assert.ok(screen.getByText(/Live updates unavailable/));
   assert.deepEqual(h.page()?.trades, [sampleTrade]);
@@ -260,7 +271,7 @@ test('amendment events update an existing cached row without another GET or clos
   await screen.findByText('AAPL');
   const amended = { ...sampleTrade, price: '228.5000', version: 2 };
   await act(async () => {
-    h.source.emit('trade.changed', { ...change, type: 'TRADE_AMENDED', trade: amended });
+    h.source.emit('trade.changed', withMatchingSummary({ ...change, type: 'TRADE_AMENDED', trade: amended }));
   });
   assert.deepEqual(h.page()?.trades, [amended]);
   assert.equal(h.fetchMock.mock.callCount(), 1);
@@ -294,7 +305,7 @@ test('cancellation SSE retains the row, blocks its open amendment and ignores ol
   fireEvent.click(await screen.findByRole('button', { name: `Amend AAPL trade ${owned.id}` }));
   fireEvent.change(screen.getByLabelText('Price (USD)'), { target: { value: '230' } });
   const cancelled = { ...owned, status: 'CANCELLED', version: 2 };
-  const cancellation = { ...change, type: 'TRADE_CANCELLED', trade: cancelled };
+  const cancellation = withMatchingSummary({ ...change, type: 'TRADE_CANCELLED', trade: cancelled });
   await act(async () => { h.source.emit('trade.changed', cancellation); });
 
   await screen.findByText(/This trade has been cancelled/);
@@ -307,7 +318,7 @@ test('cancellation SSE retains the row, blocks its open amendment and ignores ol
 
   await act(async () => {
     h.source.emit('trade.changed', cancellation);
-    h.source.emit('trade.changed', { ...change, type: 'TRADE_AMENDED', trade: owned });
+    h.source.emit('trade.changed', withMatchingSummary({ ...change, type: 'TRADE_AMENDED', trade: owned }));
   });
   assert.deepEqual(h.page()?.trades, [cancelled]);
   assert.equal(h.fetchMock.mock.callCount(), 1);
@@ -327,9 +338,9 @@ test('filtered SSE ignores unrelated trades and inserts matching trades without 
   await screen.findByText('No trades yet');
   await selectStatus('ACTIVE');
   await screen.findByText('No matching trades');
-  await act(async () => { h.source.emit('trade.changed', { ...change, type: 'TRADE_CANCELLED', trade: { ...newer, status: 'CANCELLED', version: 2 } }); });
+  await act(async () => { h.source.emit('trade.changed', withMatchingSummary({ ...change, type: 'TRADE_CANCELLED', trade: { ...newer, status: 'CANCELLED', version: 2 } })); });
   assert.deepEqual(h.page()?.trades, []);
-  await act(async () => { h.source.emit('trade.changed', { ...change, trade: { ...sampleTrade, id: cancelledTrade.id } }); });
+  await act(async () => { h.source.emit('trade.changed', withMatchingSummary({ ...change, trade: { ...sampleTrade, id: cancelledTrade.id } })); });
   await screen.findByText('AAPL');
   assert.equal(h.fetchMock.mock.callCount(), 2);
   assert.equal(FakeEventSource.sources.length, 1);
@@ -346,18 +357,18 @@ test('filter exits remove rows immediately and coalesce a passive bounded refill
   await act(async () => { h.source.emit('stream.ready', ready); });
   await screen.findByText('AAPL');
   await selectStatus('ACTIVE');
-  const cancellation = { ...change, type: 'TRADE_CANCELLED', trade: { ...sampleTrade, version: 2, status: 'CANCELLED' } };
+  const cancellation = withMatchingSummary({ ...change, type: 'TRADE_CANCELLED', trade: { ...sampleTrade, version: 2, status: 'CANCELLED' } });
   await act(async () => {
     h.source.emit('trade.changed', cancellation);
     h.source.emit('trade.changed', cancellation);
-    h.source.emit('trade.changed', { ...cancellation, trade: { ...newer, version: 2, status: 'CANCELLED' } });
+    h.source.emit('trade.changed', withMatchingSummary({ ...cancellation, trade: { ...newer, version: 2, status: 'CANCELLED' } }));
   });
   assert.deepEqual(h.page()?.trades, []);
   assert.equal(screen.getByRole('button', { name: 'Next' }).hasAttribute('disabled'), true);
   await waitFor(() => assert.equal(activeReads, 2));
   const replacement = { ...cancelledTrade, status: 'ACTIVE' as const, version: 1 };
   await act(async () => {
-    h.source.emit('trade.changed', { ...change, type: 'TRADE_AMENDED', trade: { ...replacement, price: '450.0000', version: 2 } });
+    h.source.emit('trade.changed', withMatchingSummary({ ...change, type: 'TRADE_AMENDED', trade: { ...replacement, price: '450.0000', version: 2 } }));
     finish(Response.json(tradePage([replacement])));
   });
   await waitFor(() => assert.equal(h.page()?.trades[0]?.price, '450.0000'));
@@ -378,7 +389,7 @@ test('a failed refill preserves event-applied rows and waits for manual retry', 
   await act(async () => { h.source.emit('stream.ready', ready); });
   await screen.findByText('AAPL');
   await selectStatus('ACTIVE');
-  await act(async () => { h.source.emit('trade.changed', { ...change, type: 'TRADE_CANCELLED', trade: { ...sampleTrade, version: 2, status: 'CANCELLED' } }); });
+  await act(async () => { h.source.emit('trade.changed', withMatchingSummary({ ...change, type: 'TRADE_CANCELLED', trade: { ...sampleTrade, version: 2, status: 'CANCELLED' } })); });
   await screen.findByText(/Unable to refresh trades/);
   assert.deepEqual(h.page()?.trades.map((trade) => trade.symbol), ['TSLA']);
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 200)); });
@@ -396,7 +407,7 @@ test('changing filters cancels a queued refill for the old selection', async (t)
   await act(async () => { h.source.emit('stream.ready', ready); });
   await screen.findByText('AAPL');
   await selectStatus('ACTIVE');
-  await act(async () => { h.source.emit('trade.changed', { ...change, type: 'TRADE_CANCELLED', trade: cancelled }); });
+  await act(async () => { h.source.emit('trade.changed', withMatchingSummary({ ...change, type: 'TRADE_CANCELLED', trade: cancelled })); });
   await selectStatus('CANCELLED');
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 200)); });
   assert.equal(h.fetchMock.mock.callCount(), 3);
@@ -422,7 +433,7 @@ test('ticker/trader changes hide previous-filter placeholders and SSE keeps matc
   await waitFor(() => assert.equal(h.fetchMock.mock.callCount(), 2));
   assert.equal(screen.queryByText('AAPL') === null, true);
   await act(async () => {
-    h.source.emit('trade.changed', { ...change, trade: { ...matching, price: '450.0000', version: 2 } });
+    h.source.emit('trade.changed', withMatchingSummary({ ...change, trade: { ...matching, price: '450.0000', version: 2 } }));
     finish(Response.json(tradePage([])));
   });
   await screen.findByText('MSFT');
@@ -430,9 +441,9 @@ test('ticker/trader changes hide previous-filter placeholders and SSE keeps matc
   await waitFor(() => assert.equal(h.fetchMock.mock.callCount(), 3));
   await waitFor(() => assert.equal(screen.getByRole('button', { name: 'Refresh trades' }).hasAttribute('disabled'), false));
   await act(async () => {
-    h.source.emit('trade.changed', { ...change, trade: { ...matching, id: 'f1550000-0000-4000-8000-000000100004', ownerId: sampleTrade.ownerId } });
-    h.source.emit('trade.changed', { ...change, trade: { ...matching, id: 'f1550000-0000-4000-8000-000000100005', symbol: 'TSLA' } });
-    h.source.emit('trade.changed', { ...change, trade: { ...matching, id: 'f1550000-0000-4000-8000-000000100006' } });
+    h.source.emit('trade.changed', withMatchingSummary({ ...change, trade: { ...matching, id: 'f1550000-0000-4000-8000-000000100004', ownerId: sampleTrade.ownerId } }));
+    h.source.emit('trade.changed', withMatchingSummary({ ...change, trade: { ...matching, id: 'f1550000-0000-4000-8000-000000100005', symbol: 'TSLA' } }));
+    h.source.emit('trade.changed', withMatchingSummary({ ...change, trade: { ...matching, id: 'f1550000-0000-4000-8000-000000100006' } }));
   });
   assert.equal(h.page()?.trades.length, 2);
   assert.ok(h.page()?.trades.every((trade) => trade.symbol === 'MSFT' && trade.ownerId === signedInTrader.id));
@@ -458,14 +469,14 @@ test('applying text searches hides old-filter rows and live events use the appli
   assert.equal(screen.queryByText('AAPL') === null, true);
   const matching = { ...newer, book: 'EQUITIES_UK', counterparty: 'Goldman Sachs' };
   await act(async () => {
-    h.source.emit('trade.changed', { ...change, trade: matching });
+    h.source.emit('trade.changed', withMatchingSummary({ ...change, trade: matching }));
     finish(Response.json(tradePage()));
   });
   await screen.findByText('TSLA');
   fireEvent.change(controls.getByRole('textbox', { name: 'Counterparty filter' }), { target: { value: 'not applied' } });
   await act(async () => {
-    h.source.emit('trade.changed', { ...change, trade: { ...matching, version: 2, price: '300.0000' } });
-    h.source.emit('trade.changed', { ...change, trade: { ...matching, id: sampleTrade.id, counterparty: null } });
+    h.source.emit('trade.changed', withMatchingSummary({ ...change, trade: { ...matching, version: 2, price: '300.0000' } }));
+    h.source.emit('trade.changed', withMatchingSummary({ ...change, trade: { ...matching, id: sampleTrade.id, counterparty: null } }));
   });
   assert.equal(h.page()?.trades.length, 1);
   assert.equal(h.page()?.trades[0]?.version, 2);
@@ -490,8 +501,8 @@ test('date-only Apply hides previous-filter rows and retains matching SSE during
   assert.equal(screen.queryByText('AAPL') === null, true);
   const matching = { ...newer, tradeDate: '2026-11-14T23:59:59.999Z' };
   await act(async () => {
-    h.source.emit('trade.changed', { ...change, trade: matching });
-    h.source.emit('trade.changed', { ...change, trade: { ...sampleTrade, tradeDate: '2026-11-15T00:00:00.000Z' } });
+    h.source.emit('trade.changed', withMatchingSummary({ ...change, trade: matching }));
+    h.source.emit('trade.changed', withMatchingSummary({ ...change, trade: { ...sampleTrade, tradeDate: '2026-11-15T00:00:00.000Z' } }));
     finish(Response.json(tradePage()));
   });
   await screen.findByText('TSLA');
@@ -532,16 +543,16 @@ test('price changes batch one passive fetch, restore server membership and prese
   reconciliation = true;
   const amended = { ...priceRows[0], price: '300.0000', version: 3 };
   await act(async () => {
-    h.source.emit('trade.changed', { ...change, type: 'TRADE_AMENDED', trade: { ...amended, price: '250.0000', version: 2 } });
-    h.source.emit('trade.changed', { ...change, type: 'TRADE_AMENDED', trade: amended });
-    h.source.emit('trade.changed', { ...change, type: 'TRADE_AMENDED', trade: amended });
+    h.source.emit('trade.changed', withMatchingSummary({ ...change, type: 'TRADE_AMENDED', trade: { ...amended, price: '250.0000', version: 2 } }));
+    h.source.emit('trade.changed', withMatchingSummary({ ...change, type: 'TRADE_AMENDED', trade: amended }));
+    h.source.emit('trade.changed', withMatchingSummary({ ...change, type: 'TRADE_AMENDED', trade: amended }));
   });
   assert.equal(h.page()?.trades[0]?.price, '300.0000');
   assert.equal(h.page()?.pageInfo.nextCursor, null);
   await waitFor(() => assert.equal(h.fetchMock.mock.callCount(), before + 1));
   const quantityEdit = { ...priceRows[1], quantity: '1.000000', version: 2 };
   await act(async () => {
-    h.source.emit('trade.changed', { ...change, type: 'TRADE_AMENDED', trade: quantityEdit });
+    h.source.emit('trade.changed', withMatchingSummary({ ...change, type: 'TRADE_AMENDED', trade: quantityEdit }));
     finish(Response.json(tradePage(priceRows.slice(1), { limit: 25, nextCursor: 'fresh' })));
   });
   await waitFor(() => assert.equal(h.page()?.pageInfo.nextCursor, 'fresh'));
@@ -569,7 +580,7 @@ test('a matching unseen trade on a price-sorted first page appears after one rec
   const before = h.fetchMock.mock.callCount();
   const created = { ...newer, price: '90.0000' };
   serverRows = [created, ...priceRows.slice(0, 24)];
-  await act(async () => { h.source.emit('trade.changed', { ...change, trade: created }); });
+  await act(async () => { h.source.emit('trade.changed', withMatchingSummary({ ...change, trade: created })); });
   await screen.findByText('TSLA');
   assert.equal(h.fetchMock.mock.callCount(), before + 1);
   assert.deepEqual(h.page()?.trades, serverRows);
@@ -587,9 +598,9 @@ test('ordinary edits, duplicates and nonmatching unseen trades make no backgroun
   const before = h.fetchMock.mock.callCount();
   const edited = { ...sampleTrade, quantity: '1.000000', version: 2 };
   await act(async () => {
-    h.source.emit('trade.changed', { ...change, type: 'TRADE_AMENDED', trade: edited });
-    h.source.emit('trade.changed', { ...change, type: 'TRADE_AMENDED', trade: edited });
-    h.source.emit('trade.changed', { ...change, trade: newer });
+    h.source.emit('trade.changed', withMatchingSummary({ ...change, type: 'TRADE_AMENDED', trade: edited }));
+    h.source.emit('trade.changed', withMatchingSummary({ ...change, type: 'TRADE_AMENDED', trade: edited }));
+    h.source.emit('trade.changed', withMatchingSummary({ ...change, trade: newer }));
     await new Promise((resolve) => setTimeout(resolve, 250));
   });
   assert.equal(h.page()?.trades[0]?.quantity, '1.000000');
@@ -614,10 +625,10 @@ test('an ordering change during reconciliation survives its older response and s
   await selectPricePage();
   const before = h.fetchMock.mock.callCount();
   reconciling = true;
-  await act(async () => { h.source.emit('trade.changed', { ...change, type: 'TRADE_AMENDED', trade: moved }); });
+  await act(async () => { h.source.emit('trade.changed', withMatchingSummary({ ...change, type: 'TRADE_AMENDED', trade: moved })); });
   await waitFor(() => assert.equal(reads, 1));
   await act(async () => {
-    h.source.emit('trade.changed', { ...change, type: 'TRADE_AMENDED', trade: movedAgain });
+    h.source.emit('trade.changed', withMatchingSummary({ ...change, type: 'TRADE_AMENDED', trade: movedAgain }));
     finish(Response.json(tradePage([moved], { limit: 25 })));
   });
   await waitFor(() => assert.equal(h.page()?.trades[0]?.price, '350.0000'));
@@ -648,4 +659,31 @@ test('reconciliation keeps an older page anchor and its new-trade notice without
   assert.deepEqual(h.page()?.trades, [cancelledTrade]);
   assert.ok(screen.getByText(/New trades received/));
   assert.equal(screen.getByRole('button', { name: 'First page' }).hasAttribute('disabled'), false);
+});
+
+
+test('summary events keep creation, amendment and cancellation flowing into the trade cache', async (t) => {
+  const h = setup(t);
+  await act(async () => { h.source.emit('stream.ready', ready); });
+  await screen.findByText('AAPL');
+  const summary = {
+    instrumentId: '7768fed5-b612-4844-8b84-e9db63a31d05', symbol: newer.symbol, currency: 'USD',
+    buyQuantity: newer.quantity, sellQuantity: '0.000000', netQuantity: newer.quantity,
+    buyValue: '1137250.5002274501', sellValue: '0.0000000000',
+    version: 9, updatedAt: ready.serverTime,
+  };
+  const amended = { ...newer, price: '250.0000', version: 2 };
+  const cancelled = { ...amended, status: 'CANCELLED' as const, version: 3 };
+  for (const [type, trade, snapshot] of [
+    ['TRADE_CREATED', newer, summary],
+    ['TRADE_AMENDED', amended, { ...summary, buyValue: '1250000.0002500000', version: 10 }],
+    ['TRADE_CANCELLED', cancelled, { ...summary, buyQuantity: '0.000000', netQuantity: '0.000000',
+      buyValue: '0.0000000000', version: 11 }],
+  ] as const) {
+    await act(async () => { h.source.emit('trade.changed', { ...change, type, trade,
+      summaries: [snapshot] }); });
+    assert.equal(h.source.closed, false);
+    assert.deepEqual(h.page()?.trades.find((row) => row.id === newer.id), trade);
+  }
+  assert.equal(h.fetchMock.mock.callCount(), 1);
 });

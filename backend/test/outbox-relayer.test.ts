@@ -7,21 +7,29 @@ import type { TradeChange } from '../src/trades/sse/trade-stream-contract';
 
 const startTime = Date.parse('2026-11-13T09:00:00.000Z');
 
-function makeEvent(index = 1): PendingTradeEvent {
+type CapturedTradeEvent = PendingTradeEvent & { payload: Pick<TradeChange, 'trade' | 'summaries'> };
+
+function makeEvent(index = 1): CapturedTradeEvent {
   const id = `f1550000-0000-4000-8000-${String(index).padStart(12, '0')}`;
+  const trade = {
+    id, symbol: 'AAPL', side: 'BUY' as const, quantity: '5000.000000', price: '227.4500',
+    trader: 'JSMITH', ownerId: 'd197282d-99ca-4260-833a-702f97d1cba1',
+    book: null, counterparty: null, status: 'ACTIVE' as const, version: 1,
+    tradeDate: new Date(startTime).toISOString(),
+    createdAt: new Date(startTime).toISOString(), updatedAt: new Date(startTime).toISOString(),
+  };
   return {
     id, type: 'TRADE_CREATED', tradeId: id, tradeVersion: 1, retries: 0, createdAt: new Date(startTime),
-    payload: {
-      id, symbol: 'AAPL', side: 'BUY', quantity: '5000.000000', price: '227.4500',
-      trader: 'JSMITH', ownerId: 'd197282d-99ca-4260-833a-702f97d1cba1',
-      book: null, counterparty: null, status: 'ACTIVE', version: 1,
-      tradeDate: new Date(startTime).toISOString(),
-      createdAt: new Date(startTime).toISOString(), updatedAt: new Date(startTime).toISOString(),
-    },
+    payload: { trade, summaries: [{
+      instrumentId: '7768fed5-b612-4844-8b84-e9db63a31d05', symbol: 'AAPL', currency: 'USD',
+      buyQuantity: '5000.000000', sellQuantity: '0.000000', netQuantity: '5000.000000',
+      buyValue: '1137250.0000000000', sellValue: '0.0000000000',
+      version: 9, updatedAt: new Date(startTime).toISOString(),
+    }] },
   };
 }
 
-function setup(events = [makeEvent()]) {
+function setup(events: PendingTradeEvent[] = [makeEvent()]) {
   let time = startTime;
   const pending = new Map(events.map((event) => [event.id, { ...event }]));
   const nextAttempts = new Map<string, number>();
@@ -54,8 +62,8 @@ test('relayer broadcasts the complete saved event before marking it published', 
   const h = setup([event]);
   t.mock.method(h.repository, 'markPublished', async (id: string, now: Date) => {
     assert.deepEqual(h.delivered, [{
-      schemaVersion: 1, changeId: event.id, type: 'TRADE_CREATED',
-      occurredAt: event.createdAt.toISOString(), trade: event.payload,
+      changeId: event.id, type: 'TRADE_CREATED',
+      occurredAt: event.createdAt.toISOString(), ...event.payload,
     }]);
     assert.equal(now.getTime(), startTime);
     h.published.push(id);
@@ -163,7 +171,7 @@ test('failure to save a retry is reported without discarding the pending event',
 for (const type of ['TRADE_AMENDED', 'TRADE_CANCELLED'] as const) {
   test(`relayer sends ${type} with the saved version and keeps the reason out of SSE`, async () => {
     const created = makeEvent();
-    const trade = { ...tradeResponseSchema.parse(created.payload), version: 2,
+    const trade = { ...tradeResponseSchema.parse(created.payload.trade), version: 2,
       status: type === 'TRADE_CANCELLED' ? 'CANCELLED' : 'ACTIVE' };
     const summary = {
       instrumentId: '7768fed5-b612-4844-8b84-e9db63a31d05', symbol: 'AAPL', currency: 'USD',
@@ -171,9 +179,8 @@ for (const type of ['TRADE_AMENDED', 'TRADE_CANCELLED'] as const) {
       buyValue: '23000.0000000000', sellValue: '6900.0000000000',
       version: 9, updatedAt: new Date(startTime).toISOString(),
     };
-    // Existing pending records and new snapshots must both retain current browser behavior.
+    // All mutations use captured snapshots; metadata-only amendments carry none.
     for (const payload of [
-      { trade, reason: 'Booking correction.' },
       { trade, reason: 'Booking correction.', summaries: [summary] },
       ...(type === 'TRADE_AMENDED' ? [{ trade, reason: null, summaries: [] }] : []),
     ]) {
@@ -182,8 +189,9 @@ for (const type of ['TRADE_AMENDED', 'TRADE_CANCELLED'] as const) {
       await h.relayer.wake();
 
       assert.deepEqual(h.delivered, [{
-        schemaVersion: 1, changeId: event.id, type,
+        changeId: event.id, type,
         occurredAt: event.createdAt.toISOString(), trade,
+        summaries: payload.summaries,
       }]);
       assert.deepEqual(h.published, [event.id]);
       assert.deepEqual(h.retries, []);
@@ -192,12 +200,12 @@ for (const type of ['TRADE_AMENDED', 'TRADE_CANCELLED'] as const) {
 
   test(`invalid ${type} payloads and trade identity/version mismatches stay retryable`, async () => {
     const created = makeEvent();
-    const trade = { ...tradeResponseSchema.parse(created.payload), version: 2,
+    const trade = { ...tradeResponseSchema.parse(created.payload.trade), version: 2,
       status: type === 'TRADE_CANCELLED' ? 'CANCELLED' : 'ACTIVE' };
-    const saved = { ...created, type, tradeVersion: 2, payload: { trade, reason: null } };
+    const saved = { ...created, type, tradeVersion: 2, payload: { trade, reason: null, summaries: created.payload.summaries } };
     for (const event of [
-      { ...saved, payload: created.payload },
-      { ...saved, payload: { trade: { ...trade, price: 228.5 }, reason: null } },
+      { ...saved, payload: { trade, reason: null } },
+      { ...saved, payload: { trade: { ...trade, price: 228.5 }, reason: null, summaries: created.payload.summaries } },
       { ...saved, tradeId: makeEvent(3).tradeId },
       { ...saved, tradeVersion: 3 },
     ]) {
@@ -212,7 +220,7 @@ for (const type of ['TRADE_AMENDED', 'TRADE_CANCELLED'] as const) {
 }
 
 
-test('relayer accepts wrapped creation payloads while continuing to send the current trade-only event', async () => {
+test('relayer sends the captured creation summary in the event', async () => {
   const created = makeEvent();
   const summary = {
     instrumentId: '7768fed5-b612-4844-8b84-e9db63a31d05', symbol: 'AAPL', currency: 'USD',
@@ -220,12 +228,12 @@ test('relayer accepts wrapped creation payloads while continuing to send the cur
     buyValue: '1160250.0000000000', sellValue: '6900.0000000000',
     version: 9, updatedAt: new Date(startTime).toISOString(),
   };
-  const payload = { trade: created.payload, summaries: [summary] };
+  const payload = { trade: created.payload.trade, summaries: [summary] };
   const h = setup([{ ...created, payload }]);
   await h.relayer.wake();
   assert.deepEqual(h.delivered, [{
-    schemaVersion: 1, changeId: created.id, type: 'TRADE_CREATED',
-    occurredAt: created.createdAt.toISOString(), trade: created.payload,
+    changeId: created.id, type: 'TRADE_CREATED',
+    occurredAt: created.createdAt.toISOString(), trade: created.payload.trade, summaries: [summary],
   }]);
   assert.deepEqual(h.published, [created.id]);
   assert.deepEqual(h.retries, []);
@@ -235,11 +243,11 @@ test('relayer accepts wrapped creation payloads while continuing to send the cur
 
 test('wrapped creation payloads still validate the trade and outbox identity before publication', async () => {
   const created = makeEvent();
-  const trade = tradeResponseSchema.parse(created.payload);
+  const trade = tradeResponseSchema.parse(created.payload.trade);
   for (const event of [
-    { ...created, payload: { trade: { ...trade, price: 227.45 }, summaries: [] } },
-    { ...created, tradeId: makeEvent(2).tradeId, payload: { trade, summaries: [] } },
-    { ...created, tradeVersion: 2, payload: { trade, summaries: [] } },
+    { ...created, payload: { trade: { ...trade, price: 227.45 }, summaries: created.payload.summaries } },
+    { ...created, tradeId: makeEvent(2).tradeId, payload: { trade, summaries: created.payload.summaries } },
+    { ...created, tradeVersion: 2, payload: { trade, summaries: created.payload.summaries } },
   ]) {
     const h = setup([event]);
     await h.relayer.wake();
@@ -247,5 +255,66 @@ test('wrapped creation payloads still validate the trade and outbox identity bef
     assert.deepEqual(h.published, []);
     assert.equal(h.retries[0]?.id, event.id);
     assert.equal(h.pending.has(event.id), true);
+  }
+});
+
+
+for (const type of ['TRADE_CREATED', 'TRADE_AMENDED', 'TRADE_CANCELLED'] as const) {
+  test(`invalid captured summaries on ${type} are retried before publication`, async () => {
+    const created = makeEvent();
+    const trade = { ...tradeResponseSchema.parse(created.payload.trade),
+      status: type === 'TRADE_CANCELLED' ? 'CANCELLED' : 'ACTIVE' };
+    const summary = {
+      instrumentId: '7768fed5-b612-4844-8b84-e9db63a31d05', symbol: 'AAPL', currency: 'USD',
+      buyQuantity: '5000.000000', sellQuantity: '0.000000', netQuantity: '5000.000000',
+      buyValue: '1137250.0000000000', sellValue: '0.0000000000',
+      version: 9, updatedAt: new Date(startTime).toISOString(),
+    };
+    for (const summaries of [null, {}, [{ ...summary, buyQuantity: 5000 }],
+      [{ ...summary, symbol: 'MSFT' }], [summary, summary],
+      ...(type === 'TRADE_AMENDED' ? [] : [[]])]) {
+      const event = { ...created, type, payload: { trade, summaries } };
+      const h = setup([event, makeEvent(2)]);
+      await h.relayer.wake();
+      assert.deepEqual(h.published, [makeEvent(2).id]);
+      assert.deepEqual(h.delivered.map((change) => change.changeId), [makeEvent(2).id]);
+      assert.equal(h.retries[0]?.id, event.id);
+      assert.equal(h.pending.has(event.id), true);
+    }
+  });
+}
+
+test('a captured summary keeps the same totals and version when publication is retried', async (t) => {
+  const created = makeEvent();
+  const summary = {
+    instrumentId: '7768fed5-b612-4844-8b84-e9db63a31d05', symbol: 'AAPL', currency: 'USD',
+    buyQuantity: '5000.000000', sellQuantity: '0.000000', netQuantity: '5000.000000',
+    buyValue: '1137250.0000000000', sellValue: '0.0000000000',
+    version: 9, updatedAt: new Date(startTime).toISOString(),
+  };
+  const h = setup([{ ...created, payload: { trade: created.payload.trade, summaries: [summary] } }]);
+  const mark = t.mock.method(h.repository, 'markPublished', async () => { throw new Error('Unavailable'); });
+  await h.relayer.wake();
+  assert.deepEqual(h.delivered[0], {
+    changeId: created.id, type: created.type,
+    occurredAt: created.createdAt.toISOString(), trade: created.payload.trade, summaries: [summary],
+  });
+  mark.mock.restore();
+  h.advance(1000);
+  await h.relayer.wake();
+  assert.deepEqual(h.delivered[1], h.delivered[0]);
+  assert.deepEqual(h.published, [created.id]);
+});
+
+
+test('records without captured summaries are retried without fabricating a snapshot', async () => {
+  const created = makeEvent();
+  for (const type of ['TRADE_CREATED', 'TRADE_AMENDED', 'TRADE_CANCELLED'] as const) {
+    const payload = type === 'TRADE_CREATED' ? created.payload.trade : { trade: created.payload.trade, reason: null };
+    const h = setup([{ ...created, type, payload }, makeEvent(2)]);
+    await h.relayer.wake();
+    assert.deepEqual(h.published, [makeEvent(2).id]);
+    assert.deepEqual(h.delivered.map((change) => change.changeId), [makeEvent(2).id]);
+    assert.equal(h.retries[0]?.id, created.id);
   }
 });

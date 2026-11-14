@@ -4,10 +4,15 @@ import { createTradeBroadcaster } from '../src/trades/sse/trade-broadcaster';
 import type { TradeChange } from '../src/trades/sse/trade-stream-contract';
 
 const change: TradeChange = {
-  schemaVersion: 1,
   changeId: 'd197282d-99ca-4260-833a-702f97d1cba2',
   type: 'TRADE_CREATED',
   occurredAt: '2026-11-13T09:00:00.000Z',
+  summaries: [{
+    instrumentId: '7768fed5-b612-4844-8b84-e9db63a31d05', symbol: 'AAPL', currency: 'USD',
+    buyQuantity: '5000.000000', sellQuantity: '0.000000', netQuantity: '5000.000000',
+    buyValue: '1137250.0000000000', sellValue: '0.0000000000',
+    version: 9, updatedAt: '2026-11-13T09:01:00.000Z',
+  }],
   trade: {
     id: 'f1550000-0000-4000-8000-000000100003',
     symbol: 'AAPL', side: 'BUY', quantity: '5000.000000', price: '227.4500',

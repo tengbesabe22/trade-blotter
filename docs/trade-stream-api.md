@@ -64,17 +64,20 @@ data: <complete TradeChange JSON>
 
 ```
 
-The JSON contains `schemaVersion: 1`, `changeId`, `type` (`TRADE_CREATED` or
-`TRADE_AMENDED` or `TRADE_CANCELLED`), `occurredAt` and the complete `trade` DTO. Both account roles receive events for all traders.
+Each event contains `changeId`, `type` (`TRADE_CREATED`, `TRADE_AMENDED` or
+`TRADE_CANCELLED`), `occurredAt`, the complete `trade` DTO and required `summaries`.
+There is one event shape with no format-version field. Both account roles receive
+events for all traders.
 Creation POST, amendment PATCH and cancellation POST responses remain `{trade}`. Duplicate event delivery is possible; the
 browser must merge by trade ID/version. No Last-Event-ID history replay is provided.
 
 Create, amend and cancel routes share the `onTradeChanged` wake-up callback. It runs only
 after a successful repository transaction and does not wait for delivery. Rejected,
 conflicting, no-op and failed mutations do not wake the relayer. Amendment/cancellation outbox
-payloads contain `{trade, reason}`; SSE sends only the trade, keeping the wire shape
-consistent with creation events. Invalid payloads or identity/version mismatches
-remain pending with the existing retry policy.
+payloads contain `{trade, reason, summaries}`; creation stores `{trade, summaries}`.
+SSE forwards the saved snapshots and keeps the reason private. Invalid trades,
+summaries or identity/version mismatches remain pending with the existing retry
+policy; incomplete events are not published.
 
 Disconnecting removes the subscription. A full 100-event broadcaster buffer also
 closes the connection, even if a write is blocked behind a slow browser. Reconnected
@@ -162,7 +165,8 @@ The inline amendment form and cancellation panel supply successful mutation
 responses to the same version guard and buffer. It does not wait for SSE or refetch after saving; duplicate
 SSE delivery is harmless and older in-flight snapshots cannot undo the change.
 Ordering/membership reconciliation is implemented for the current bounded page.
-Live summaries remain pending. Older pages keep the unseen-trade notice until a
+Summary snapshots now reach the browser; summary cache/UI integration remains pending.
+Older pages keep the unseen-trade notice until a
 user refreshes or changes the query, even after passive reconciliation.
 
 Tests use fake session persistence, a controlled clock and mocked timers, and
@@ -170,34 +174,38 @@ read/cancel the real Hono response stream.
 No running database is required.
 
 
-## Summary event contract (defined, not yet sent)
+## Summary events
 
-tradeChangeWithSummariesSchema defines a version-2 trade.changed payload. It keeps
-changeId/type/occurredAt/trade and adds a required summaries array using the same
-symbolSummarySchema as GET /api/summaries. Entries are absolute resulting totals,
-not deltas. Each summary version belongs to its instrument and is independent of
-the trade version. A receiver will merge each entity by its own identity/version.
+tradeChangeSchema defines one event contract on the backend and browser:
 
-A trade's immutable symbol means at most one desk summary can change. Creation and
-cancellation require one matching-symbol snapshot. Amendments may carry an empty
-array for metadata-only changes, which do not revise totals. Economic amendments
-must include the updated summary when the writer is wired; the contract alone cannot
-distinguish them without the previous trade state. Zero/flat summary rows are retained.
+```text
+{changeId, type, occurredAt, trade, summaries}
+```
 
-The existing tradeChangeSchema/TradeChange remain version 1 and are still used by
-the relayer, broadcaster and browser. Version 2 is a separate schema/type so this
-contract-only slice does not break existing delivery or pending trade-only outbox
-records. Creation now stores {trade, summaries: [snapshot]} in its outbox payload,
-using the summary returned within the transaction. The relayer accepts both wrapped
-creations and old raw trade DTOs; it still broadcasts version-1 trade-only events.
-It reads the trade from the wrapper without forwarding or rewriting the saved
-summary. Amend/cancel now store {trade, reason, summaries} too, taking snapshots
-from their summary update results. Metadata-only amendments use summaries: [].
-The existing wrapped-payload reader handles these without a relayer code change;
-reasons and summaries remain out of current SSE. Version-2 delivery/browser support
-remains pending. Existing trade-only events must not be assigned present-day totals
-as if they were historical snapshots. Mutation HTTP responses remain {trade}.
+There is no schemaVersion, format union or fallback decoder for trade.changed.
+trade.version and summary.version remain independent concurrency/merge revisions.
+Summary rows reuse the exact decimal-string contract from GET /api/summaries.
 
-Ten new validation tests cover all three event types, independent versions,
-summary cardinality/symbol matching, metadata-only edits, decimal formats and legacy
-compatibility. All 409 backend tests, root typecheck and backend build pass.
+An immutable symbol limits each event to one desk row. Creation/cancellation require
+one matching-symbol snapshot. Amendments carry one for economic changes or [] for
+metadata-only edits. Zero/flat rows are retained. The writer captures these values
+in the mutation transaction; the relayer forwards that snapshot without reading
+newer totals. Retries preserve saved values and revisions. Reasons stay private.
+
+All three outbox payloads use {trade, summaries}, with an optional stored reason.
+The relayer parses those fields, adds event identity/type/time, validates the event
+and broadcasts it. Missing or invalid snapshots stay retryable; they are not replaced
+with fabricated totals. A read-only local check found zero pending records lacking
+snapshots. No rows were changed and no compatibility migration was needed.
+
+The broadcaster/SSE route use the same authenticated connection. The browser validates
+this one shape and immediately merges its trade. Summary baseline loading, merging
+by instrument/version and the docked panel remain next. The separate stream.ready,
+GET responses and HTTP mutation responses retain their existing contracts.
+
+Checks: all 421 backend tests and 287 frontend tests pass, with root typecheck,
+both builds and frontend lint. Focused tests cover captured snapshots, invalid
+payloads, retries, both roles receiving complete SSE frames and browser trade updates.
+The parallel regression run timed out on one existing Amend grid UI test; that file
+and the full frontend rerun both passed without code changes. Persistence/EventSource
+are faked; SSE tests read real Hono response streams. No live database CI dependency.

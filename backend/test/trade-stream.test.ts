@@ -259,10 +259,15 @@ test('SSE closes safely if an ongoing session lookup fails', async (t) => {
 });
 
 const change: TradeChange = {
-  schemaVersion: 1,
   changeId: 'd197282d-99ca-4260-833a-702f97d1cba2',
   type: 'TRADE_CREATED',
   occurredAt: '2026-11-13T09:01:00.000Z',
+  summaries: [{
+    instrumentId: '7768fed5-b612-4844-8b84-e9db63a31d05', symbol: 'AAPL', currency: 'USD',
+    buyQuantity: '5000.000000', sellQuantity: '0.000000', netQuantity: '5000.000000',
+    buyValue: '1137250.0000000000', sellValue: '0.0000000000',
+    version: 9, updatedAt: '2026-11-13T09:01:00.000Z',
+  }],
   trade: {
     id: 'f1550000-0000-4000-8000-000000100003',
     symbol: 'AAPL', side: 'BUY', quantity: '5000.000000', price: '227.4500',
@@ -297,12 +302,16 @@ for (const role of ['TRADER', 'READ_ONLY'] as const) {
       const cancellation = { ...amendment, type: 'TRADE_CANCELLED' as const,
         changeId: 'd197282d-99ca-4260-833a-702f97d1cba6',
         trade: { ...amendment.trade, status: 'CANCELLED' as const, version: 3 } };
-      h.broadcaster.broadcast(change);
-      h.broadcaster.broadcast(amendment);
-      h.broadcaster.broadcast(cancellation);
+      const summary = change.summaries[0]!;
+      const events: TradeChange[] = [change,
+        { ...amendment, summaries: [{ ...summary, buyValue: '1142500.0000000000', version: 10 }] },
+        { ...cancellation, summaries: [{ ...summary, buyQuantity: '0.000000', netQuantity: '0.000000',
+          buyValue: '0.0000000000', version: 11 }] },
+      ];
+      for (const event of events) h.broadcaster.broadcast(event);
       for (const reader of [first, second]) {
         assert.match(new TextDecoder().decode((await reader.read()).value), /event: stream.ready/);
-        for (const expected of [change, amendment, cancellation]) {
+        for (const expected of events) {
           const frame = new TextDecoder().decode((await readNext(reader)).value);
           assert.match(frame, /event: trade.changed/);
           assert.match(frame, new RegExp(`id: ${expected.changeId}`));
