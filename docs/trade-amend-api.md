@@ -6,8 +6,9 @@ client, ownership-aware row action and inline form are implemented.
 
 ## Inline editor
 
-- **Amend** appears on your own ACTIVE rows. Other owners/cancelled rows show a dash;
-  reviewers have no Actions column. Backend authorization still applies.
+- A pencil icon (**Amend trade**) appears on your own ACTIVE rows. Other owners/cancelled rows have empty action cells;
+  reviewers have no Actions column. Tooltips appear on hover or keyboard focus;
+  Escape dismisses them. Backend authorization still applies.
 - Selecting a row opens its prefilled form in the shared lower-right panel.
   Ticker/trade ID are fixed context. Finish or discard that edit before choosing
   another row. Closing/success restores Create trade with its draft preserved.

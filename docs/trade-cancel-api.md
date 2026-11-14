@@ -51,8 +51,9 @@ Conflicts keep their details in `ApiError.responseBody` as `unknown`. Validate w
 
 ## Inline confirmation
 
-- **Cancel trade** appears beside Amend only on your own ACTIVE rows. Reviewers
-  have no Actions column; other owners and cancelled rows show a dash.
+- A circled-X icon (**Cancel trade**) appears beside the amend pencil only on
+  your own ACTIVE rows. Both have hover/focus tooltips and accessible names. Reviewers
+  have no Actions column; other owners and cancelled rows have empty action cells.
 - The panel shows read-only trade details and an optional reason. **Keep trade**
   closes without submitting; **Confirm cancellation** sends the captured version.
   It replaces Create trade in the shared lower-right panel. Only one amendment

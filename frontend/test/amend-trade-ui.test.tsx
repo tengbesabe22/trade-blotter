@@ -67,6 +67,10 @@ test('only own ACTIVE rows offer Amend, opening the selected trade in the right-
   showWorkspace(t, async () => Response.json(tradePage([owned, other, cancelled])));
   const button = await screen.findByRole('button', { name: `Amend AAPL trade ${owned.id}` });
   assert.equal(screen.getAllByRole('button', { name: /^Amend / }).length, 1);
+  const actionCells = screen.getByRole('grid').querySelectorAll('[role="gridcell"][col-id="actions"]');
+  const unavailable = [...actionCells].filter((cell) => !cell.querySelector('button'));
+  assert.equal(unavailable.length, 2);
+  assert.equal(unavailable.every((cell) => cell.textContent === ''), true);
   fireEvent.click(button);
   const form = await screen.findByRole('form', { name: 'Amend trade' });
   assert.equal((screen.getByLabelText('Price (USD)') as HTMLInputElement).value, '227.4500');

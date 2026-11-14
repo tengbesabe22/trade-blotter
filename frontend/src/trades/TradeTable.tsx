@@ -3,6 +3,7 @@ import { CellStyleModule, ClientSideRowModelModule, themeQuartz, type ColDef } f
 import { AgGridProvider, AgGridReact, type CustomCellRendererProps } from 'ag-grid-react';
 import type { CurrentUser } from '../api/auth-contract';
 import type { Trade } from '../api/trade-contract';
+import { TradeActionButton } from './TradeActionButton';
 
 const modules = [ClientSideRowModelModule, CellStyleModule];
 const theme = themeQuartz.withParams({
@@ -73,17 +74,16 @@ type TradeTableProps = {
 
 export function TradeTable({ trades, user, onAmend, onCancel, actionsDisabled }: TradeTableProps) {
   const actionColumn = useMemo<ColDef<Trade>>(() => ({
-    colId: 'actions', headerName: 'Actions', pinned: 'right', width: 220,
+    colId: 'actions', headerName: 'Actions', pinned: 'right', width: 88, minWidth: 88,
+    cellStyle: { paddingLeft: 8, paddingRight: 8 },
     cellRenderer: ({ data }: CustomCellRendererProps<Trade>) => {
-      if (!data || data.ownerId !== user.id || data.status !== 'ACTIVE') return '—';
+      if (!data || data.ownerId !== user.id || data.status !== 'ACTIVE') return null;
       return (
         <div className="flex h-full items-center gap-1">
-          <button type="button" disabled={actionsDisabled} aria-label={`Amend ${data.symbol} trade ${data.id}`}
-            className="min-h-10 rounded px-3 font-semibold text-blue-700 hover:bg-blue-50 focus-visible:outline-2 focus-visible:outline-blue-700 disabled:opacity-50"
-            onClick={() => onAmend(data)}>Amend</button>
-          <button type="button" disabled={actionsDisabled} aria-label={`Cancel ${data.symbol} trade ${data.id}`}
-            className="min-h-10 rounded px-3 font-semibold text-red-700 hover:bg-red-50 focus-visible:outline-2 focus-visible:outline-red-700 disabled:opacity-50"
-            onClick={() => onCancel(data)}>Cancel trade</button>
+          <TradeActionButton action="amend" label={`Amend ${data.symbol} trade ${data.id}`}
+            disabled={actionsDisabled} onClick={() => onAmend(data)} />
+          <TradeActionButton action="cancel" label={`Cancel ${data.symbol} trade ${data.id}`}
+            disabled={actionsDisabled} onClick={() => onCancel(data)} />
         </div>
       );
     },
