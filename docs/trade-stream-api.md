@@ -191,8 +191,11 @@ records. Creation now stores {trade, summaries: [snapshot]} in its outbox payloa
 using the summary returned within the transaction. The relayer accepts both wrapped
 creations and old raw trade DTOs; it still broadcasts version-1 trade-only events.
 It reads the trade from the wrapper without forwarding or rewriting the saved
-summary. Amend/cancel snapshot capture and version-2 producer/consumer support remain
-pending. Existing trade-only events must not be assigned present-day totals
+summary. Amend/cancel now store {trade, reason, summaries} too, taking snapshots
+from their summary update results. Metadata-only amendments use summaries: [].
+The existing wrapped-payload reader handles these without a relayer code change;
+reasons and summaries remain out of current SSE. Version-2 delivery/browser support
+remains pending. Existing trade-only events must not be assigned present-day totals
 as if they were historical snapshots. Mutation HTTP responses remain {trade}.
 
 Ten new validation tests cover all three event types, independent versions,

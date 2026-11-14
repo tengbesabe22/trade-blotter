@@ -165,17 +165,29 @@ for (const type of ['TRADE_AMENDED', 'TRADE_CANCELLED'] as const) {
     const created = makeEvent();
     const trade = { ...tradeResponseSchema.parse(created.payload), version: 2,
       status: type === 'TRADE_CANCELLED' ? 'CANCELLED' : 'ACTIVE' };
-    const event = { ...created, type, tradeVersion: 2, payload: { trade, reason: 'Booking correction.' } };
-    const h = setup([event]);
+    const summary = {
+      instrumentId: '7768fed5-b612-4844-8b84-e9db63a31d05', symbol: 'AAPL', currency: 'USD',
+      buyQuantity: '100.000000', sellQuantity: '30.000000', netQuantity: '70.000000',
+      buyValue: '23000.0000000000', sellValue: '6900.0000000000',
+      version: 9, updatedAt: new Date(startTime).toISOString(),
+    };
+    // Existing pending records and new snapshots must both retain current browser behavior.
+    for (const payload of [
+      { trade, reason: 'Booking correction.' },
+      { trade, reason: 'Booking correction.', summaries: [summary] },
+      ...(type === 'TRADE_AMENDED' ? [{ trade, reason: null, summaries: [] }] : []),
+    ]) {
+      const event = { ...created, type, tradeVersion: 2, payload };
+      const h = setup([event]);
+      await h.relayer.wake();
 
-    await h.relayer.wake();
-
-    assert.deepEqual(h.delivered, [{
-      schemaVersion: 1, changeId: event.id, type,
-      occurredAt: event.createdAt.toISOString(), trade,
-    }]);
-    assert.deepEqual(h.published, [event.id]);
-    assert.deepEqual(h.retries, []);
+      assert.deepEqual(h.delivered, [{
+        schemaVersion: 1, changeId: event.id, type,
+        occurredAt: event.createdAt.toISOString(), trade,
+      }]);
+      assert.deepEqual(h.published, [event.id]);
+      assert.deepEqual(h.retries, []);
+    }
   });
 
   test(`invalid ${type} payloads and trade identity/version mismatches stay retryable`, async () => {

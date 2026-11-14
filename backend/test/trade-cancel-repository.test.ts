@@ -5,17 +5,19 @@ import { createTradeRepository, type TradeRecord } from '../src/trades/trade-rep
 import { cancelTradeRequestSchema } from '../src/trades/cancellations/trade-cancel-contract';
 import { toTradeResponse } from '../src/trades/trade-mapper';
 
-const trade: TradeRecord = {
+type TradeRecordWithCurrency = TradeRecord & { instrument: { currency: string } };
+
+const trade: TradeRecordWithCurrency = {
   id: 'f1550000-0000-4000-8000-000000100001',
   userId: 'd197282d-99ca-4260-833a-702f97d1cba1',
   instrumentId: '7768fed5-b612-4844-8b84-e9db63a31d05',
-  instrument: { symbol: 'AAPL' }, user: { displayName: 'JSMITH' },
+  instrument: { symbol: 'AAPL', currency: 'USD' }, user: { displayName: 'JSMITH' },
   side: 'BUY', quantity: new Prisma.Decimal('5000'), price: new Prisma.Decimal('227.45'),
   book: 'EQUITIES_US', counterparty: 'Example Bank',
   tradeDate: new Date('2026-08-18T09:15:23Z'), status: 'ACTIVE', version: 3,
   createdAt: new Date('2026-08-18T09:16:00Z'), updatedAt: new Date('2026-08-18T09:16:00Z'),
 };
-const cancelled: TradeRecord = {
+const cancelled: TradeRecordWithCurrency = {
   ...trade, status: 'CANCELLED', version: 4, updatedAt: new Date('2026-11-14T09:00:00Z'),
 };
 const command = {
@@ -23,9 +25,23 @@ const command = {
   input: cancelTradeRequestSchema.parse({ expectedVersion: 3, reason: 'Duplicate booking.' }),
 };
 
+const summaryRow: Prisma.SymbolSummaryGetPayload<{}> = {
+  id: 'a0000000-0000-4000-8000-000000000001', instrumentId: trade.instrumentId,
+  buyQuantity: new Prisma.Decimal('100'), sellQuantity: new Prisma.Decimal('30'),
+  buyValue: new Prisma.Decimal('23000'), sellValue: new Prisma.Decimal('6900'),
+  version: 10, updatedAt: new Date('2026-11-15T09:00:02.000Z'),
+};
+const summarySnapshot = {
+  instrumentId: trade.instrumentId, symbol: 'AAPL', currency: 'USD',
+  buyQuantity: '100.000000', sellQuantity: '30.000000', netQuantity: '70.000000',
+  buyValue: '23000.0000000000', sellValue: '6900.0000000000',
+  version: 10, updatedAt: summaryRow.updatedAt.toISOString(),
+};
+
 type Options = {
-  current?: TradeRecord | null;
-  updated?: TradeRecord | null;
+  savedSummary?: typeof summaryRow;
+  current?: TradeRecordWithCurrency | null;
+  updated?: TradeRecordWithCurrency | null;
   failAt?: 'update' | 'lookup' | 'audit' | 'summary' | 'outbox';
 };
 
@@ -62,6 +78,7 @@ function setup(options: Options = {}) {
       calls.push('summary');
       summaries.push(input);
       if (options.failAt === 'summary') throw failure;
+      return options.savedSummary ?? summaryRow;
     } },
     outboxEvent: { create: async ({ data }: { data: Prisma.OutboxEventUncheckedCreateInput }) => {
       calls.push('outbox');
@@ -94,7 +111,7 @@ test('cancel returns the guarded update directly and saves its audit/summary/eve
     where: { id: trade.id, userId: trade.userId, status: 'ACTIVE', version: 3 },
     data: { status: 'CANCELLED', version: { increment: 1 } },
     include: {
-      instrument: { select: { symbol: true } },
+      instrument: { select: { symbol: true, currency: true } },
       user: { select: { displayName: true } },
     },
   }]);
@@ -104,7 +121,7 @@ test('cancel returns the guarded update directly and saves its audit/summary/eve
   }]);
   assert.deepEqual(h.events, [{
     type: 'TRADE_CANCELLED', actorId: trade.userId, tradeId: trade.id, tradeVersion: 4,
-    payload: { trade: response, reason: 'Duplicate booking.' },
+    payload: { trade: response, reason: 'Duplicate booking.', summaries: [summarySnapshot] },
   }]);
   assert.deepEqual(h.calls, ['begin', 'update', 'audit', 'summary', 'outbox', 'commit']);
 });
@@ -113,7 +130,7 @@ test('cancel retains null when no reason was supplied', async () => {
   const h = setup();
   await h.repository.cancel({ ...command, input: cancelTradeRequestSchema.parse({ expectedVersion: 3 }) });
   assert.equal(h.audits[0]?.reason, null);
-  assert.deepEqual(h.events[0]?.payload, { trade: toTradeResponse(cancelled), reason: null });
+  assert.deepEqual(h.events[0]?.payload, { trade: toTradeResponse(cancelled), reason: null, summaries: [summarySnapshot] });
 });
 
 test('a missing cancellation target returns not-found without writes', async () => {
@@ -205,4 +222,28 @@ test('cancellation preserves every digit when removing a large fractional trade'
   const summary = JSON.parse(JSON.stringify(h.summaries[0]));
   assert.equal(summary.data.buyQuantity.increment, '-999999999.999999');
   assert.equal(summary.data.buyValue.increment, '-999999999899999.0000000001');
+});
+
+
+test('cancelling the last execution saves a retained zero summary with its resulting version and time', async () => {
+  const h = setup({ savedSummary: {
+    ...summaryRow, buyQuantity: new Prisma.Decimal(0), sellQuantity: new Prisma.Decimal(0),
+    buyValue: new Prisma.Decimal(0), sellValue: new Prisma.Decimal(0), version: 11,
+  } });
+  await h.repository.cancel(command);
+  assert.deepEqual(h.events[0]?.payload, {
+    trade: toTradeResponse(cancelled), reason: command.input.reason,
+    summaries: [{
+      ...summarySnapshot, buyQuantity: '0.000000', sellQuantity: '0.000000', netQuantity: '0.000000',
+      buyValue: '0.0000000000', sellValue: '0.0000000000', version: 11,
+    }],
+  });
+  assert.equal(h.calls.includes('read'), false);
+});
+
+test('an invalid returned cancellation summary aborts before writing the outbox', async () => {
+  const h = setup({ savedSummary: { ...summaryRow, buyQuantity: new Prisma.Decimal(-1) } });
+  await assert.rejects(h.repository.cancel(command), { name: 'ZodError' });
+  assert.deepEqual(h.calls, ['begin', 'update', 'audit', 'summary', 'rollback']);
+  assert.deepEqual(h.events, []);
 });

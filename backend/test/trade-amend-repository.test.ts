@@ -5,11 +5,13 @@ import { createTradeRepository, type TradeRecord } from '../src/trades/trade-rep
 import { amendTradeRequestSchema } from '../src/trades/amendments/trade-amend-contract';
 import { toTradeResponse } from '../src/trades/trade-mapper';
 
-const trade: TradeRecord = {
+type TradeRecordWithCurrency = TradeRecord & { instrument: { currency: string } };
+
+const trade: TradeRecordWithCurrency = {
   id: 'f1550000-0000-4000-8000-000000100001',
   userId: 'd197282d-99ca-4260-833a-702f97d1cba1',
   instrumentId: '7768fed5-b612-4844-8b84-e9db63a31d05',
-  instrument: { symbol: 'AAPL' }, user: { displayName: 'JSMITH' },
+  instrument: { symbol: 'AAPL', currency: 'USD' }, user: { displayName: 'JSMITH' },
   side: 'BUY', quantity: new Prisma.Decimal('5000'), price: new Prisma.Decimal('227.45'),
   book: 'EQUITIES_US', counterparty: 'Example Bank',
   tradeDate: new Date('2026-08-18T09:15:23Z'), status: 'ACTIVE', version: 3,
@@ -23,14 +25,28 @@ const command = {
     expectedVersion: 3, changes: { price: '228.5', book: null }, reason: 'Correct price.',
   }),
 };
-const updated: TradeRecord = {
+const updated: TradeRecordWithCurrency = {
   ...trade, price: new Prisma.Decimal('228.5'), book: null, version: 4,
   updatedAt: new Date('2026-11-14T09:00:00Z'),
 };
 
+const summaryRow: Prisma.SymbolSummaryGetPayload<{}> = {
+  id: 'a0000000-0000-4000-8000-000000000001', instrumentId: trade.instrumentId,
+  buyQuantity: new Prisma.Decimal('5100'), sellQuantity: new Prisma.Decimal('30'),
+  buyValue: new Prisma.Decimal('1165500'), sellValue: new Prisma.Decimal('6900'),
+  version: 9, updatedAt: new Date('2026-11-15T09:00:01.000Z'),
+};
+const summarySnapshot = {
+  instrumentId: trade.instrumentId, symbol: 'AAPL', currency: 'USD',
+  buyQuantity: '5100.000000', sellQuantity: '30.000000', netQuantity: '5070.000000',
+  buyValue: '1165500.0000000000', sellValue: '6900.0000000000',
+  version: 9, updatedAt: summaryRow.updatedAt.toISOString(),
+};
+
 type Options = {
-  current?: TradeRecord | null;
-  afterUpdate?: TradeRecord | null;
+  savedSummary?: typeof summaryRow;
+  current?: TradeRecordWithCurrency | null;
+  afterUpdate?: TradeRecordWithCurrency | null;
   count?: number;
   failAt?: 'update' | 'audit' | 'summary' | 'outbox';
 };
@@ -70,6 +86,7 @@ function setup(options: Options = {}) {
       calls.push('summary');
       summaries.push(input);
       if (options.failAt === 'summary') throw failure;
+      return options.savedSummary ?? summaryRow;
     } },
     outboxEvent: { create: async ({ data }: { data: Prisma.OutboxEventUncheckedCreateInput }) => {
       calls.push('outbox');
@@ -109,7 +126,7 @@ test('amend atomically guards owner/status/version and saves the audit, summary 
   }]);
   assert.deepEqual(h.events, [{
     type: 'TRADE_AMENDED', actorId: trade.userId, tradeId: trade.id, tradeVersion: 4,
-    payload: { trade: response, reason: 'Correct price.' },
+    payload: { trade: response, reason: 'Correct price.', summaries: [summarySnapshot] },
   }]);
   assert.deepEqual(h.calls, ['begin', 'read', 'update', 'read', 'audit', 'summary', 'outbox', 'commit']);
 });
@@ -241,6 +258,7 @@ test('metadata-only amendments retain audit/event writes without updating summar
   } });
   assert.equal((await h.repository.amend({ ...command, input })).kind, 'amended');
   assert.deepEqual(h.summaries, []);
+  assert.deepEqual(h.events[0]?.payload, { trade: toTradeResponse(afterUpdate), reason: null, summaries: [] });
   assert.deepEqual(h.calls, ['begin', 'read', 'update', 'read', 'audit', 'outbox', 'commit']);
 });
 
@@ -251,4 +269,12 @@ test('a small amendment to a large trade retains the exact decimal difference in
   await h.repository.amend({ ...command, input: amendTradeRequestSchema.parse({ expectedVersion: 3, changes: { price: '1000000' } }) });
   const summary = JSON.parse(JSON.stringify(h.summaries[0]));
   assert.equal(summary.data.buyValue.increment, '99999.9999999999');
+});
+
+
+test('an invalid returned amendment summary aborts before writing the outbox', async () => {
+  const h = setup({ savedSummary: { ...summaryRow, version: -1 } });
+  await assert.rejects(h.repository.amend(command), { name: 'ZodError' });
+  assert.deepEqual(h.calls, ['begin', 'read', 'update', 'read', 'audit', 'summary', 'rollback']);
+  assert.deepEqual(h.events, []);
 });

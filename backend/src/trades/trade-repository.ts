@@ -96,12 +96,13 @@ async function updateSymbolSummary(
   tx: Prisma.TransactionClient,
   instrumentId: string,
   delta: TradeContribution,
-): Promise<void> {
+  instrument: { symbol: string; currency: string },
+): Promise<SymbolSummary[]> {
   // Metadata-only amendments still produce history/events, but no summary revision.
-  if (!hasSummaryChanges(delta)) return;
+  if (!hasSummaryChanges(delta)) return [];
 
   // An existing trade must already have a summary; a missing row aborts the transaction.
-  await tx.symbolSummary.update({
+  const savedSummary = await tx.symbolSummary.update({
     where: { instrumentId },
     data: {
       buyQuantity: { increment: delta.buyQuantity },
@@ -111,6 +112,9 @@ async function updateSymbolSummary(
       version: { increment: 1 },
     },
   });
+
+  // Use this write's resulting totals/version, rather than reading a later state.
+  return [toSymbolSummary({ ...savedSummary, instrument })];
 }
 
 export function createTradeRepository(database: TradeDatabase): TradeRepository {
@@ -273,7 +277,7 @@ export function createTradeRepository(database: TradeDatabase): TradeRepository 
       const tradeQuery = {
         where: { id: tradeId },
         include: {
-          instrument: { select: { symbol: true } },
+          instrument: { select: { symbol: true, currency: true } },
           user: { select: { displayName: true } },
         },
       } as const;
@@ -324,7 +328,7 @@ export function createTradeRepository(database: TradeDatabase): TradeRepository 
       });
 
       const summaryDelta = calculateSummaryDelta(currentTrade, amendedTrade);
-      await updateSymbolSummary(tx, latest.instrumentId, summaryDelta);
+      const summaries = await updateSymbolSummary(tx, latest.instrumentId, summaryDelta, latest.instrument);
 
       await tx.outboxEvent.create({
         data: {
@@ -332,7 +336,7 @@ export function createTradeRepository(database: TradeDatabase): TradeRepository 
           actorId: userId,
           tradeId,
           tradeVersion: latest.version,
-          payload: { trade: amendedTrade, reason: input.reason },
+          payload: { trade: amendedTrade, reason: input.reason, summaries },
         },
       });
 
@@ -341,7 +345,7 @@ export function createTradeRepository(database: TradeDatabase): TradeRepository 
 
     cancel: ({ userId, tradeId, input }) => database.$transaction(async (tx): Promise<CancelTradeResult> => {
       const include = {
-        instrument: { select: { symbol: true } },
+        instrument: { select: { symbol: true, currency: true } },
         user: { select: { displayName: true } },
       } as const;
 
@@ -374,7 +378,7 @@ export function createTradeRepository(database: TradeDatabase): TradeRepository 
 
       // Cancellation preserves quantity, price and side; reuse them as its prior ACTIVE contribution.
       const summaryDelta = calculateSummaryDelta({ ...cancelledTrade, status: 'ACTIVE' }, cancelledTrade);
-      await updateSymbolSummary(tx, cancelled.instrumentId, summaryDelta);
+      const summaries = await updateSymbolSummary(tx, cancelled.instrumentId, summaryDelta, cancelled.instrument);
 
       await tx.outboxEvent.create({
         data: {
@@ -382,7 +386,7 @@ export function createTradeRepository(database: TradeDatabase): TradeRepository 
           actorId: userId,
           tradeId,
           tradeVersion: cancelled.version,
-          payload: { trade: cancelledTrade, reason: input.reason },
+          payload: { trade: cancelledTrade, reason: input.reason, summaries },
         },
       });
 

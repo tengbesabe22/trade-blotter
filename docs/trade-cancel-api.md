@@ -74,7 +74,10 @@ CANCELLED audit snapshot and outbox event commit in one transaction. The audit
 contains the complete resulting DTO, actor, new version and optional reason;
 PostgreSQL supplies recordedAt. No extra trade read is needed for auditing.
 Audit/outbox errors abort the transaction; conflicts/rejections add no entry.
-The optional reason also stays in the existing outbox payload.
+The outbox stores {trade, reason, summaries}, capturing the totals/version/time
+returned by the summary update. A zero-valued summary is retained after cancelling
+the last execution. The mapper reuses symbol/currency from the returned trade relation;
+no extra summary lookup is added. Invalid snapshots also abort the transaction.
 
 After success, the route invokes `onTradeChanged` without waiting for delivery.
 The relayer selects pending cancellation events and sends `trade.changed` with

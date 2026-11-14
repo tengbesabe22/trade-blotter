@@ -109,7 +109,11 @@ actor, resulting version and optional reason, followed by the outbox record in t
 same transaction. PostgreSQL supplies recordedAt. Audit/outbox failures abort the
 transaction; no-ops and rejected or lost concurrent updates add neither record.
 A concurrent winner returns a conflict with current state, without silently retrying.
-Amendments never look up a replacement instrument.
+Amendments never look up a replacement instrument. The summary adjustment and its
+returned totals/version/time are also captured in that transaction: the outbox now
+stores {trade, reason, summaries}. Metadata-only amendments use summaries: [] without
+updating the summary revision. Symbol/currency come from the existing trade read;
+there is no additional summary lookup. HTTP and current SSE shapes are unchanged.
 
 
 ## Live updates

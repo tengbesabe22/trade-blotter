@@ -3,8 +3,8 @@
 **Implemented:** calculation helper, SymbolSummary model/migration and seeded totals.
 The local database has been reset and reseeded. Create, amend and cancel now update
 summaries transactionally. The read response contract, repository, mapper and GET endpoint are implemented/tested.
-The version-2 SSE contract is defined/tested, and creation captures its summary in
-the outbox. Summary delivery and UI remain planned.
+The version-2 SSE contract is defined/tested. Create, amend and cancel capture their
+resulting summary snapshots in the outbox. Summary delivery and UI remain planned.
 
 ## Scope
 
@@ -144,6 +144,10 @@ trade repository, after the audit entry and before the outbox. The helper skips
 zero deltas and atomically increments the four totals and independent version.
 It updates an existing row; missing summaries or invalid resulting totals cause
 an error and abort the whole transaction instead of inventing a partial baseline.
+The helper now maps the returned update row into a one-element summaries array,
+using symbol/currency from the existing trade relation. Zero deltas return [].
+Each outbox payload stores {trade, reason, summaries} inside the same transaction.
+There is no extra summary query or post-commit reconstruction of totals.
 
 Amendment computes contribution(after) minus contribution(before), reusing the
 trade states already read. Quantity/price/side changes adjust totals; metadata-only
@@ -160,6 +164,13 @@ metadata-only changes, exact large decimals, failure paths and no extra cancella
 read. Combined with creation, all57 mutation repository cases and all368 backend
 tests pass, with root typecheck/build. These tests use fake persistence, not live
 PostgreSQL concurrency/rollback checks. No schema/data or API/SSE shape change.
+
+The amend/cancel capture slice passes all 40 repository cases and 14 relayer cases.
+Tests cover captured aggregate totals/revisions/times, metadata-only empty arrays,
+retained zero rows, invalid snapshots aborting the transaction, and current/legacy
+payload compatibility. All 416 backend tests, root typecheck and backend build pass.
+Persistence is faked; no live PostgreSQL concurrency/rollback check was added. HTTP
+responses remain {trade}; current SSE remains version-1 trade-only delivery.
 
 ## Read response contract
 
@@ -232,9 +243,8 @@ ACTIVE trade aggregates. This verification changed no data and is not a CI depen
 
 The expanded SSE contract is defined separately from current version-1 delivery; see
 [the event contract](trade-stream-api.md#summary-event-contract-defined-not-yet-sent).
-Creation captures resulting summaries in outbox records. Next do the same for
-amendments/cancellations, wire version-2 event delivery and browser support, then
-add the docked panel. All mutations maintain totals from
+Create/amend/cancel now capture resulting summaries in outbox records. Next wire
+version-2 event delivery and browser support, then add the docked panel. All mutations maintain totals from
 a correct starting state; earlier drift is not repaired automatically. Valuation
 marks and indicative P&L remain later work.
 
