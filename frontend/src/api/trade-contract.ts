@@ -28,6 +28,8 @@ export const tradeListQuerySchema = z.strictObject({
   traderId: z.uuid().optional(),
   status: z.enum(['ACTIVE', 'CANCELLED']).optional(),
   side: z.enum(['BUY', 'SELL']).optional(),
+  book: z.string().trim().max(64).transform((value) => value.toLowerCase() || undefined).optional(),
+  counterparty: z.string().trim().max(120).transform((value) => value.toLowerCase() || undefined).optional(),
   after: z.string().min(1).max(2048).optional(),
 });
 

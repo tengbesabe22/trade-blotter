@@ -167,3 +167,32 @@ test('unrelated ticker/trader events do not create notices on older pages', () =
   assert.deepEqual(result.trades, []);
   assert.equal(result.hasNewTrades, false);
 });
+
+
+test('SSE text matching is case-insensitive, literal, nullable-safe and combines with other filters', () => {
+  const matching = { ...newer, symbol: 'AAPL', book: 'EQUITIES_UK', counterparty: 'Goldman Sachs' };
+  const query = { ...defaultTradeListQuery, symbol: 'AAPL', side: 'BUY' as const, book: 'equities_', counterparty: 'goldman' };
+  const result = mergeLiveTradePage(tradePage(), [matching,
+    { ...matching, id: sampleTrade.id, book: null },
+    { ...matching, id: 'f1550000-0000-4000-8000-000000100004', counterparty: null },
+    { ...matching, id: 'f1550000-0000-4000-8000-000000100005', symbol: 'MSFT' },
+    { ...matching, id: 'f1550000-0000-4000-8000-000000100006', book: 'EQUITIESXUK' },
+  ], query);
+  assert.deepEqual(result.trades, [matching]);
+  assert.equal(mergeLiveTradePage(tradePage(), [matching], { ...query, counterparty: '%' }).trades.length, 0);
+});
+
+test('a newer amendment leaving the text search removes the row and invalidates its cursor', () => {
+  const original = { ...sampleTrade, book: 'EQUITIES_UK', counterparty: 'Goldman Sachs' };
+  for (const request of [
+    { ...defaultTradeListQuery, book: 'equities', counterparty: 'goldman' },
+    { ...defaultTradeListQuery, book: 'equities', counterparty: 'goldman', after: 'older' },
+  ]) {
+    const updated = { ...original, version: 2, counterparty: null };
+    const result = mergeLiveTradePage(tradePage([original], { nextCursor: 'old-cursor' }), [updated], request);
+    assert.equal(result.trades.length, 0);
+    assert.equal(result.pageInfo.nextCursor, null);
+    assert.equal(result.needsRefill, true);
+    assert.deepEqual(mergeLiveTradePage(tradePage([updated]), [original], request).trades, []);
+  }
+});

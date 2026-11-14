@@ -431,3 +431,35 @@ test('ticker/trader changes hide previous-filter placeholders and SSE keeps matc
   assert.equal(h.fetchMock.mock.callCount(), 3);
   assert.equal(FakeEventSource.sources.length, 1);
 });
+
+
+test('applying text searches hides old-filter rows and live events use the applied values, not drafts', async (t) => {
+  let finish!: (response: Response) => void;
+  const pending = new Promise<Response>((resolve) => { finish = resolve; });
+  const h = setup(t, async (input) => new URL(String(input), 'http://localhost').searchParams.has('book')
+    ? pending : Response.json(tradePage([sampleTrade])));
+  await act(async () => { h.source.emit('stream.ready', ready); });
+  await screen.findByText('AAPL');
+  const controls = within(screen.getByRole('region', { name: 'Sort and filter' }));
+  fireEvent.change(controls.getByRole('textbox', { name: 'Book filter' }), { target: { value: 'uk' } });
+  fireEvent.change(controls.getByRole('textbox', { name: 'Counterparty filter' }), { target: { value: 'goldman' } });
+  assert.equal(h.fetchMock.mock.callCount(), 1);
+  fireEvent.click(controls.getByRole('button', { name: 'Apply text filters' }));
+  await waitFor(() => assert.equal(h.fetchMock.mock.callCount(), 2));
+  assert.equal(screen.queryByText('AAPL') === null, true);
+  const matching = { ...newer, book: 'EQUITIES_UK', counterparty: 'Goldman Sachs' };
+  await act(async () => {
+    h.source.emit('trade.changed', { ...change, trade: matching });
+    finish(Response.json(tradePage()));
+  });
+  await screen.findByText('TSLA');
+  fireEvent.change(controls.getByRole('textbox', { name: 'Counterparty filter' }), { target: { value: 'not applied' } });
+  await act(async () => {
+    h.source.emit('trade.changed', { ...change, trade: { ...matching, version: 2, price: '300.0000' } });
+    h.source.emit('trade.changed', { ...change, trade: { ...matching, id: sampleTrade.id, counterparty: null } });
+  });
+  assert.equal(h.page()?.trades.length, 1);
+  assert.equal(h.page()?.trades[0]?.version, 2);
+  assert.equal(h.fetchMock.mock.callCount(), 2);
+  assert.equal(FakeEventSource.sources.length, 1);
+});

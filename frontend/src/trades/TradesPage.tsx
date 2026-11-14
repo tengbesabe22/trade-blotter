@@ -40,7 +40,7 @@ export function TradesPage({ user, onSessionExpired, tradePanel, createSubmissio
   const [cursorHistory, setCursorHistory] = useState<(string | null)[]>([null]);
   const request = { ...queryOptions, after: cursorHistory.at(-1) ?? undefined };
   const isFirstPage = cursorHistory.length === 1;
-  const hasFilters = Boolean(queryOptions.symbol || queryOptions.traderId || queryOptions.status || queryOptions.side);
+  const hasFilters = Boolean(queryOptions.symbol || queryOptions.traderId || queryOptions.status || queryOptions.side || queryOptions.book || queryOptions.counterparty);
   const emptyTitle = hasFilters ? 'No matching trades' : 'No trades yet';
   const emptyDescription = hasFilters
     ? 'Try changing your filters.'

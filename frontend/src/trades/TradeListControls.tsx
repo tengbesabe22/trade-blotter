@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { ApiError } from '../api/api-client';
 import { useTradeOptions } from './useTradeOptions';
 import type { TradeListQuery } from '../api/trade-contract';
@@ -12,31 +12,50 @@ type TradeListControlsProps = {
 const selectClass = 'mt-1 min-h-11 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700';
 
 export function TradeListControls({ query, onChange, onSessionExpired }: TradeListControlsProps) {
+  // Draft text stays local until Apply or Enter submits both filters together.
+  const [book, setBook] = useState(query.book ?? '');
+  const [counterparty, setCounterparty] = useState(query.counterparty ?? '');
+  const textFilters = {
+    book: book.trim().toLowerCase() || undefined,
+    counterparty: counterparty.trim().toLowerCase() || undefined,
+  };
+  const textFiltersChanged = textFilters.book !== query.book || textFilters.counterparty !== query.counterparty;
   const options = useTradeOptions();
   const instruments = options.data?.instruments ?? [];
   const traders = options.data?.traders ?? [];
   const lookupExpired = options.error instanceof ApiError && options.error.status === 401;
   const lookupUnavailable = options.isPending || options.isError;
-  const hasFilters = Boolean(query.symbol || query.traderId || query.status || query.side);
+  const hasFilters = Boolean(query.symbol || query.traderId || query.status || query.side || query.book || query.counterparty);
 
   useEffect(() => {
     if (lookupExpired) onSessionExpired();
   }, [lookupExpired, onSessionExpired]);
 
-  function update(changes: Partial<Pick<TradeListQuery, 'limit' | 'sortBy' | 'sortDirection' | 'status' | 'side' | 'symbol' | 'traderId'>>) {
+  function update(changes: Partial<Omit<TradeListQuery, 'after'>>) {
     // Changing filters, order or size always starts from the first page.
     onChange({ ...query, ...changes, after: undefined });
   }
 
+  function applyTextFilters(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (textFiltersChanged) update(textFilters);
+  }
+
   function clearFilters() {
-    update({ symbol: undefined, traderId: undefined, status: undefined, side: undefined });
+    setBook('');
+    setCounterparty('');
+    // Clearing an unapplied draft alone does not change the server query.
+    if (hasFilters) {
+      update({ symbol: undefined, traderId: undefined, status: undefined, side: undefined,
+        book: undefined, counterparty: undefined });
+    }
   }
 
   return (
     <section aria-labelledby="trade-controls-title" className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
       <div className="flex items-center justify-between gap-2">
         <h2 id="trade-controls-title" className="text-lg font-semibold text-slate-950">Sort and filter</h2>
-        <button type="button" onClick={clearFilters} disabled={!hasFilters}
+        <button type="button" onClick={clearFilters} disabled={!hasFilters && !book && !counterparty}
           className="min-h-9 rounded-lg px-2 text-sm font-semibold text-blue-700 hover:bg-blue-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700 disabled:cursor-default disabled:text-slate-400 disabled:hover:bg-transparent">
           Clear filters
         </button>
@@ -86,6 +105,24 @@ export function TradeListControls({ query, onChange, onSessionExpired }: TradeLi
             </select>
           </label>
         </div>
+        <form aria-label="Book and counterparty filters" onSubmit={applyTextFilters}>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="flex min-w-0 flex-col text-sm font-medium text-slate-700">
+              Book
+              <input aria-label="Book filter" className={selectClass + ' w-full'} value={book} maxLength={64}
+                onChange={(event) => setBook(event.target.value)} />
+            </label>
+            <label className="flex min-w-0 flex-col text-sm font-medium text-slate-700">
+              Counterparty
+              <input aria-label="Counterparty filter" className={selectClass + ' w-full'} value={counterparty} maxLength={120}
+                onChange={(event) => setCounterparty(event.target.value)} />
+            </label>
+          </div>
+          <button type="submit" disabled={!textFiltersChanged}
+            className="mt-2 min-h-9 rounded-lg border border-slate-300 px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700 disabled:opacity-50">
+            Apply text filters
+          </button>
+        </form>
         <label className="flex flex-col text-sm font-medium text-slate-700">
           Sort by
           <select

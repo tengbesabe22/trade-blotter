@@ -102,10 +102,57 @@ test('Clear filters stays usable after lookup failure and is disabled once every
   assert.equal(clear.hasAttribute('disabled'), false);
   fireEvent.click(clear);
   assert.deepEqual(h.events.queries.at(-1), {
-    ...defaultTradeListQuery, symbol: undefined, traderId: undefined, status: undefined, side: undefined, after: undefined,
+    ...defaultTradeListQuery, symbol: undefined, traderId: undefined, status: undefined, side: undefined,
+    book: undefined, counterparty: undefined, after: undefined,
   });
   assert.equal(clear.hasAttribute('disabled'), true);
   fireEvent.click(clear);
   assert.equal(h.events.queries.length, 1);
   assert.equal(h.mock.mock.callCount(), 1);
+});
+
+
+test('text searches apply together only on submission and preserve dropdown filters', async (t) => {
+  const h = setup(t, async () => Response.json(tradeOptions));
+  await screen.findByRole('option', { name: 'MSFT — Microsoft Corporation' });
+  const book = screen.getByRole('textbox', { name: 'Book filter' }) as HTMLInputElement;
+  const counterparty = screen.getByRole('textbox', { name: 'Counterparty filter' }) as HTMLInputElement;
+  assert.equal(book.maxLength, 64);
+  assert.equal(counterparty.maxLength, 120);
+  fireEvent.change(book, { target: { value: '  EQUITIES_  ' } });
+  fireEvent.change(counterparty, { target: { value: '  Goldman  ' } });
+  assert.equal(h.events.queries.length, 0);
+  fireEvent.click(screen.getByRole('button', { name: 'Apply text filters' }));
+  assert.deepEqual(h.events.queries.at(-1), { ...defaultTradeListQuery, status: 'ACTIVE', side: 'BUY',
+    book: 'equities_', counterparty: 'goldman', after: undefined });
+  assert.equal(h.events.queries.length, 1);
+  assert.equal(screen.getByRole('button', { name: 'Apply text filters' }).hasAttribute('disabled'), true);
+  fireEvent.change(book, { target: { value: ' ' } });
+  fireEvent.submit(screen.getByRole('form', { name: 'Book and counterparty filters' }));
+  assert.equal(h.events.queries.at(-1)?.book, undefined);
+  assert.equal(h.events.queries.at(-1)?.counterparty, 'goldman');
+  assert.equal(h.events.queries.length, 2);
+  assert.equal(h.mock.mock.callCount(), 1);
+});
+
+test('Clear filters removes applied text and unapplied drafts even when option lookup fails', async (t) => {
+  const h = setup(t, async () => Response.json({}, { status: 500 }));
+  await screen.findByText('Unable to load filter options. Please try again.');
+  const book = screen.getByRole('textbox', { name: 'Book filter' }) as HTMLInputElement;
+  const counterparty = screen.getByRole('textbox', { name: 'Counterparty filter' }) as HTMLInputElement;
+  fireEvent.change(book, { target: { value: 'uk' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Apply text filters' }));
+  fireEvent.change(counterparty, { target: { value: 'unsaved' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Clear filters' }));
+  assert.equal(book.value, '');
+  assert.equal(counterparty.value, '');
+  assert.equal(h.events.queries.at(-1)?.book, undefined);
+  assert.equal(h.events.queries.at(-1)?.counterparty, undefined);
+  assert.equal(screen.getByRole('button', { name: 'Clear filters' }).hasAttribute('disabled'), true);
+  const changesBeforeDraft = h.events.queries.length;
+  fireEvent.change(book, { target: { value: 'draft only' } });
+  assert.equal(screen.getByRole('button', { name: 'Clear filters' }).hasAttribute('disabled'), false);
+  fireEvent.click(screen.getByRole('button', { name: 'Clear filters' }));
+  assert.equal(book.value, '');
+  assert.equal(h.events.queries.length, changesBeforeDraft);
 });

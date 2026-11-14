@@ -510,3 +510,39 @@ test('Clear filters makes one unfiltered page-one request while preserving sorti
   assert.equal((creation.getByLabelText('Quantity') as HTMLInputElement).value, '123');
   assert.equal(mock.mock.calls.filter((call) => call.arguments[0] === '/api/trades/filter-options').length, 1);
 });
+
+
+test('applying text filters makes one page-one request, preserves sorting and clears back to all trades', async (t) => {
+  const urls: URL[] = [];
+  showTrades(t, async (input) => {
+    const url = new URL(String(input), 'http://localhost');
+    urls.push(url);
+    return Response.json(tradePage(url.searchParams.has('book') ? [] : [sampleTrade], { nextCursor: 'next' }));
+  });
+  await screen.findByText('AAPL');
+  const controls = within(screen.getByRole('region', { name: 'Sort and filter' }));
+  fireEvent.change(controls.getByLabelText('Sort by'), { target: { value: 'price' } });
+  fireEvent.change(controls.getByLabelText('Rows per page'), { target: { value: '25' } });
+  await waitFor(() => assert.equal(screen.getByRole('button', { name: 'Next' }).hasAttribute('disabled'), false));
+  fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+  await waitFor(() => assert.equal(urls.at(-1)?.searchParams.get('after'), 'next'));
+  const requestsBeforeTyping = urls.length;
+  fireEvent.change(controls.getByRole('textbox', { name: 'Book filter' }), { target: { value: '  Equities  ' } });
+  fireEvent.change(controls.getByRole('textbox', { name: 'Counterparty filter' }), { target: { value: '  Goldman  ' } });
+  assert.equal(urls.length, requestsBeforeTyping);
+  fireEvent.click(controls.getByRole('button', { name: 'Apply text filters' }));
+  await screen.findByText('No matching trades');
+  assert.equal(urls.length, requestsBeforeTyping + 1);
+  const query = urls.at(-1)!.searchParams;
+  assert.equal(query.get('book'), 'equities');
+  assert.equal(query.get('counterparty'), 'goldman');
+  assert.equal(query.has('after'), false);
+  assert.equal(query.get('sortBy'), 'price');
+  assert.equal(query.get('limit'), '25');
+  assert.equal(screen.getByRole('button', { name: 'Previous' }).hasAttribute('disabled'), true);
+  fireEvent.click(controls.getByRole('button', { name: 'Clear filters' }));
+  await screen.findByText('AAPL');
+  assert.equal(urls.length, requestsBeforeTyping + 2);
+  assert.equal(urls.at(-1)!.searchParams.has('book'), false);
+  assert.equal(urls.at(-1)!.searchParams.has('counterparty'), false);
+});

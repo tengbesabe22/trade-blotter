@@ -37,7 +37,8 @@ export function useLiveTrades(request: TradeListQuery, savedTrade: Trade | null 
       // Keep paging smooth, but do not show rows from a different filter selection.
       const sameFilters = previousRequest?.symbol === request.symbol &&
         previousRequest?.traderId === request.traderId &&
-        previousRequest?.status === request.status && previousRequest?.side === request.side;
+        previousRequest?.status === request.status && previousRequest?.side === request.side &&
+        previousRequest?.book === request.book && previousRequest?.counterparty === request.counterparty;
       return sameFilters ? previous : undefined;
     },
     // Wait for ready, or allow HTTP-only fallback when streaming is unavailable.

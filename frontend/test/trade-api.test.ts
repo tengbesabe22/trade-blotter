@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test, { type TestContext } from 'node:test';
+import { ZodError } from 'zod';
 import { ApiError } from '../src/api/api-client';
 import { defaultTradeListQuery } from '../src/api/trade-contract';
 import { tradeApi } from '../src/api/trade-api';
@@ -133,3 +134,35 @@ test('an invalid trader ID is rejected before listing fetches', async (t) => {
   await assert.rejects(tradeApi.list({ ...defaultTradeListQuery, traderId: 'JSMITH' }));
   assert.equal(mock.mock.callCount(), 0);
 });
+
+
+test('listing normalizes and serializes literal book/counterparty searches', async (t) => {
+  const mock = stubResponse(t, Response.json(tradePage()));
+  await tradeApi.list({ ...defaultTradeListQuery, book: '  Equities_UK  ', counterparty: '  Goldman & 50%  ' });
+  const query = new URL(String(mock.mock.calls[0].arguments[0]), 'http://localhost').searchParams;
+  assert.equal(query.get('book'), 'equities_uk');
+  assert.equal(query.get('counterparty'), 'goldman & 50%');
+});
+
+test('blank text filters are omitted from the listing request', async (t) => {
+  const mock = stubResponse(t, Response.json(tradePage()));
+  await tradeApi.list({ ...defaultTradeListQuery, book: '  ', counterparty: '' });
+  const query = new URL(String(mock.mock.calls[0].arguments[0]), 'http://localhost').searchParams;
+  assert.equal(query.has('book'), false);
+  assert.equal(query.has('counterparty'), false);
+});
+
+for (const [field, maxLength] of [['book', 64], ['counterparty', 120]] as const) {
+  test(`overlong ${field} searches fail before fetch`, async (t) => {
+    const mock = stubResponse(t, Response.json(tradePage()));
+    await assert.rejects(tradeApi.list({ ...defaultTradeListQuery, [field]: 'x'.repeat(maxLength + 1) }), (error) => {
+      assert.ok(error instanceof ZodError);
+      assert.ok(error.issues.some((issue) => issue.code === 'too_big' && issue.path[0] === field));
+      return true;
+    });
+    assert.equal(mock.mock.callCount(), 0);
+    await tradeApi.list({ ...defaultTradeListQuery, [field]: 'x'.repeat(maxLength) });
+    const query = new URL(String(mock.mock.calls[0].arguments[0]), 'http://localhost').searchParams;
+    assert.equal(query.get(field)?.length, maxLength);
+  });
+}
