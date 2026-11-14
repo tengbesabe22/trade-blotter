@@ -7,6 +7,7 @@ import { createTradeFilterOptionsRoutes } from './listing/trade-filter-options-r
 import { createTradeListingRoutes } from './listing/trade-list-routes';
 import { createTradeAmendmentRoutes } from './amendments/trade-amend-routes';
 import { createTradeCancellationRoutes } from './cancellations/trade-cancel-routes';
+import { createTradeHistoryRoutes } from './history/trade-history-routes';
 
 export function createTradeRoutes(
   authRepository: AuthRepository,
@@ -17,6 +18,7 @@ export function createTradeRoutes(
   const routes = new Hono<AuthEnv>();
 
   routes.route('/', createTradeFilterOptionsRoutes(authRepository, tradeRepository, options));
+  routes.route('/', createTradeHistoryRoutes(authRepository, tradeRepository, options));
   routes.route('/', createTradeListingRoutes(authRepository, tradeRepository, options));
   routes.route('/', createTradeCreationRoutes(authRepository, tradeRepository, options, onTradeChanged));
   routes.route('/', createTradeAmendmentRoutes(authRepository, tradeRepository, options, onTradeChanged));

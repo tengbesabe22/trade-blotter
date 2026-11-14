@@ -2,8 +2,7 @@
 
 **Implemented:** Prisma model, append-only SQL migration and seeded histories.
 Create, amend and cancel write audit entries transactionally. The history read
-contract and repository reads are implemented; endpoint wiring and the history UI
-are next.
+contract, repository reads and GET endpoint are implemented. The history UI is next.
 
 ## Stored entry
 
@@ -31,8 +30,7 @@ There is no updatedAt: entries are never edited.
 - Versions must be positive. CREATED requires version 1 and no reason; AMENDED and
   CANCELLED require a later version. Every entry requires an actor.
 - Snapshot JSON must be an object with the same trade ID and numeric version as
-  the entry. The history response contract defines full DTO validation; read
-  endpoint wiring remains next.
+  the entry. The history mapper and GET response validate the full public DTO.
 
 These rules supplement the application. Database owners can alter/drop triggers;
 production runtime credentials should not own the schema. This is not a claim of
@@ -74,10 +72,10 @@ An audit error aborts the transaction. Conflicts, no-ops, missing/forbidden trad
 repeated cancellation and drafts add no successful-change history. Responses and
 SSE payloads are unchanged; outbox delivery is independent of retained audit storage.
 
-## History read contract (endpoint not yet wired)
+## History endpoint
 
-`GET /api/trades/:id/history` will permit both signed-in roles under the existing
-shared trade visibility rules. The response is
+`GET /api/trades/:id/history` permits both signed-in roles under the existing
+shared trade visibility rules, including another trader's trades. The response is
 `{schemaVersion: 1, generatedAt, tradeId, entries}`.
 
 Fetch every retained entry for this trade, newest version first. Individual histories
@@ -110,7 +108,13 @@ Reads need no explicit transaction because retained audit rows are append-only.
 Snapshot and entry validation enforce trade/version agreement, action/state
 consistency and valid field differences. The response contract additionally checks
 that entries belong to the selected trade and have descending unique versions.
-HTTP wiring and the history UI are not implemented.
+`trade-history-routes.ts` uses the existing session middleware, validates and
+normalizes the UUID, calls listHistory and validates the complete response. Invalid
+IDs return 400 INVALID_INPUT; missing trades return 404 TRADE_NOT_FOUND. Missing or
+expired sessions return 401. Repository/response validation errors use the existing
+sanitized 500 INTERNAL_ERROR handler. Responses use Cache-Control: no-store.
+Foreground reads record session activity; the existing background-request header
+suppresses idle renewal while preserving all session checks. The history UI is next.
 
 ## Verification
 
@@ -129,6 +133,10 @@ not PostgreSQL rollback. Eight history repository tests cover complete reads (in
 entries), missing trades, empty histories, all editable field changes,
 cancellation status, missing predecessors, malformed snapshots and database errors.
 These tests use fake persistence and do not verify PostgreSQL execution plans.
+Eleven HTTP route tests use the real app/session middleware with fake repositories.
+They cover missing/expired sessions, both roles reading another trader's history,
+UUID normalization/validation, missing trades, empty results, sanitized failures,
+invalid/private repository output and foreground/background activity handling.
 No live-database test dependency was added.
 
 Reference: [PostgreSQL statement-level triggers](https://www.postgresql.org/docs/18/sql-createtrigger.html).
