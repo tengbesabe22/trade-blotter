@@ -50,9 +50,9 @@ The ready payload is defined in
 abort listener when the connection ends. Responses use no-store and disable
 proxy buffering through X-Accel-Buffering.
 
-## Trade creation and amendment events
+## Trade change events
 
-The outbox relayer runs after committed creates/amendments, at startup and every
+The outbox relayer runs after committed creates/amendments/cancellations, at startup and every
 second for recovery. It broadcasts through the same instance used by this route. Each
 connection subscribes before `stream.ready`, then sends queued changes immediately
 without waiting for a heartbeat or fetching trades again.
@@ -65,13 +65,13 @@ data: <complete TradeChange JSON>
 ```
 
 The JSON contains `schemaVersion: 1`, `changeId`, `type` (`TRADE_CREATED` or
-`TRADE_AMENDED`), `occurredAt` and the complete `trade` DTO. Both account roles receive events for all traders.
-The POST and PATCH responses remain `{trade}`. Duplicate event delivery is possible; the
+`TRADE_AMENDED` or `TRADE_CANCELLED`), `occurredAt` and the complete `trade` DTO. Both account roles receive events for all traders.
+Creation POST, amendment PATCH and cancellation POST responses remain `{trade}`. Duplicate event delivery is possible; the
 browser must merge by trade ID/version. No Last-Event-ID history replay is provided.
 
-Create and amend routes share the `onTradeChanged` wake-up callback. It runs only
+Create, amend and cancel routes share the `onTradeChanged` wake-up callback. It runs only
 after a successful repository transaction and does not wait for delivery. Rejected,
-conflicting, no-op and failed amendments do not wake the relayer. Amendment outbox
+conflicting, no-op and failed mutations do not wake the relayer. Amendment/cancellation outbox
 payloads contain `{trade, reason}`; SSE sends only the trade, keeping the wire shape
 consistent with creation events. Invalid payloads or identity/version mismatches
 remain pending with the existing retry policy.
@@ -99,6 +99,10 @@ IDs. To test an amendment, use the [PATCH curl example](trade-amend-api.md#http-
 for a visible trade owned by that trader, with its current version. Both consoles
 should receive `TRADE_AMENDED` with the same trade ID and the incremented version.
 The existing cache merger updates a visible row without another GET.
+For cancellation, use the [cancel POST example](trade-cancel-api.md#request).
+Both sessions receive `TRADE_CANCELLED`; the row remains with its new status and
+version. Its Amend action disappears. An open amendment retains its draft and
+blocks saving. Older events cannot undo that status because versions only advance.
 Run `tradeEvents.close()` when finished.
 
 ## Browser cache behavior
@@ -134,7 +138,7 @@ Heartbeat and trade-event checks also never renew idle time.
 The inline amendment form also supplies successful PATCH responses to the same
 version guard and buffer. It does not wait for SSE or refetch after saving; duplicate
 SSE delivery is harmless and older in-flight snapshots cannot undo the change.
-Cancellation controls/events, summaries and broader automatic page reconciliation
+Cancellation controls, summaries and broader automatic page reconciliation
 remain pending; existing page/filter-membership limitations are unchanged.
 
 Tests use fake session persistence, a controlled clock and mocked timers, and

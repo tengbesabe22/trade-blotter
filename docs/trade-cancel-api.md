@@ -2,7 +2,8 @@
 
 `POST /api/trades/:id/cancel` cancels an owned ACTIVE trade. The record stays in
 the blotter with status `CANCELLED`; its business fields are retained.
-The endpoint is implemented. Cancellation SSE delivery and UI remain pending.
+The endpoint and cancellation SSE delivery are implemented. The cancel UI remains
+pending.
 
 ## Request
 
@@ -45,7 +46,20 @@ the changed row. Only a failed match needs a diagnostic read. Cancellation and i
 outbox event commit in one transaction; the optional reason stays in the outbox.
 
 After success, the route invokes `onTradeChanged` without waiting for delivery.
-The current relayer selects creation/amendment events only, so cancellation events
-remain pending until the SSE slice. For now, refresh trade listings to see a
-cancellation made through curl. Rejections and failures do not wake delivery.
+The relayer selects pending cancellation events and sends `trade.changed` with
+`type: TRADE_CANCELLED` and the complete resulting trade. The reason is not sent
+through SSE. Rejections and failures do not wake delivery.
 Permanent audit history and live summaries remain separate work.
+
+
+## Live browser behavior
+
+The receiving table retains the row with `CANCELLED` status and the new version,
+without another GET. Its Amend action disappears. An open amendment keeps its draft
+but blocks saving, with a cancellation message. Existing version guards ignore
+duplicate/older events, so a stale amendment cannot restore the active status.
+
+Manual check: open the blotter in two separately signed-in browser sessions, then
+use the curl request above for an owned visible trade and its current version.
+Both sessions should receive the cancellation without refreshing. Traders and
+reviewers receive the same trade events. See the [stream guide](trade-stream-api.md#trade-change-events).

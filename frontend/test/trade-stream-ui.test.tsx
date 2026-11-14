@@ -274,3 +274,31 @@ test('a page waiting for SSE reconnection cannot reuse the previous page cursor'
   assert.equal(h.fetchMock.mock.callCount(), 2);
   assert.equal(screen.getByRole('button', { name: 'Next' }).hasAttribute('disabled'), false);
 });
+
+
+test('cancellation SSE retains the row, blocks its open amendment and ignores older or duplicate updates without a GET', async (t) => {
+  const owned = { ...sampleTrade, ownerId: signedInTrader.id };
+  const h = setup(t, async () => Response.json(tradePage([owned])));
+  await act(async () => { h.source.emit('stream.ready', ready); });
+  fireEvent.click(await screen.findByRole('button', { name: `Amend AAPL trade ${owned.id}` }));
+  fireEvent.change(screen.getByLabelText('Price (USD)'), { target: { value: '230' } });
+  const cancelled = { ...owned, status: 'CANCELLED', version: 2 };
+  const cancellation = { ...change, type: 'TRADE_CANCELLED', trade: cancelled };
+  await act(async () => { h.source.emit('trade.changed', cancellation); });
+
+  await screen.findByText(/This trade has been cancelled/);
+  assert.deepEqual(h.page()?.trades, [cancelled]);
+  assert.equal((screen.getByLabelText('Price (USD)') as HTMLInputElement).value, '230');
+  assert.equal(screen.getByRole('button', { name: 'Save changes' }).hasAttribute('disabled'), true);
+  fireEvent.click(screen.getByRole('button', { name: 'Discard changes' }));
+  await screen.findByText('AAPL', { exact: true });
+  await waitFor(() => assert.equal(screen.queryByRole('button', { name: /^Amend / }), null));
+
+  await act(async () => {
+    h.source.emit('trade.changed', cancellation);
+    h.source.emit('trade.changed', { ...change, type: 'TRADE_AMENDED', trade: owned });
+  });
+  assert.deepEqual(h.page()?.trades, [cancelled]);
+  assert.equal(h.fetchMock.mock.callCount(), 1);
+  assert.equal(h.source.closed, false);
+});

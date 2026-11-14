@@ -8,7 +8,7 @@ Trade reads support bounded cursor pages, server sorting, and filtering.
 Traders can amend their own ACTIVE trades through an inline form, with ownership
 and version checks, immediate cache updates and SSE delivery.
 
-**Next:** broader live-page reconciliation, filter controls, cancellation UI/live delivery, and deployment.
+**Next:** broader live-page reconciliation, filter controls, cancellation UI, and deployment.
 The frontend supports login, session restoration, logout, and a read-only trade
 grid with server sorting, Previous/Next pagination, manual refresh, and loading/empty/error states.
 Traders can create trades through a validated form; successful submissions refresh the current page.
@@ -78,7 +78,7 @@ All four accounts use the local demo password **`LocalDemo!2026`**.
 Both roles can list all trades. Only traders can create trades; ownership comes
 from the session. Traders can amend only their own ACTIVE trades with the expected
 version. Traders can also cancel owned ACTIVE trades through the API; cancellation
-UI and live delivery remain pending.
+SSE delivery is implemented; its UI remains pending.
 All seeded trades and prices are fictional.
 
 ## API guide
@@ -118,7 +118,7 @@ operations; frontend API/component tests mock fetch. Neither needs a running Pos
 
 Live database concurrency/rollback verification and p50/p95 measurements remain
 pending. Outbox records are stored; the relayer wakes after committed creates/amendments,
-at startup and every second for recovery. SSE creation/amendment delivery, heartbeats
+at startup and every second for recovery. SSE creation/amendment/cancellation delivery, heartbeats
 and session checks are implemented for one backend process. Browser subscriptions
 update the default first page directly and resynchronise the current page after
 reconnection; broader automatic page reconciliation remains pending.

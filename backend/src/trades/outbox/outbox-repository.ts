@@ -22,7 +22,7 @@ export function createOutboxRepository(
   return {
     listPending: (now, limit) => database.outboxEvent.findMany({
       where: {
-        type: { in: ['TRADE_CREATED', 'TRADE_AMENDED'] },
+        type: { in: ['TRADE_CREATED', 'TRADE_AMENDED', 'TRADE_CANCELLED'] },
         status: 'PENDING',
         nextAttemptAt: { lte: now },
       },

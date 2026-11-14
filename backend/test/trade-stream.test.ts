@@ -271,7 +271,7 @@ const change: TradeChange = {
 };
 
 for (const role of ['TRADER', 'READ_ONLY'] as const) {
-  test(`SSE immediately sends creation and amendment events to their owner and a different ${role}`, async () => {
+  test(`SSE immediately sends creation, amendment and cancellation events to their owner and a different ${role}`, async () => {
     const h = await setup();
     const other = { ...user, id: 'd197282d-99ca-4260-833a-702f97d1cba4', displayName: 'ADOE', role };
     const otherToken = 'b'.repeat(43);
@@ -291,11 +291,15 @@ for (const role of ['TRADER', 'READ_ONLY'] as const) {
       const amendment = { ...change, type: 'TRADE_AMENDED' as const,
         changeId: 'd197282d-99ca-4260-833a-702f97d1cba5',
         trade: { ...change.trade, price: '228.5000', version: 2 } };
+      const cancellation = { ...amendment, type: 'TRADE_CANCELLED' as const,
+        changeId: 'd197282d-99ca-4260-833a-702f97d1cba6',
+        trade: { ...amendment.trade, status: 'CANCELLED' as const, version: 3 } };
       h.broadcaster.broadcast(change);
       h.broadcaster.broadcast(amendment);
+      h.broadcaster.broadcast(cancellation);
       for (const reader of [first, second]) {
         assert.match(new TextDecoder().decode((await reader.read()).value), /event: stream.ready/);
-        for (const expected of [change, amendment]) {
+        for (const expected of [change, amendment, cancellation]) {
           const frame = new TextDecoder().decode((await readNext(reader)).value);
           assert.match(frame, /event: trade.changed/);
           assert.match(frame, new RegExp(`id: ${expected.changeId}`));

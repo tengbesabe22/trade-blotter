@@ -160,39 +160,41 @@ test('failure to save a retry is reported without discarding the pending event',
 });
 
 
-test('relayer sends amendments with the saved version and keeps the reason out of SSE', async () => {
-  const created = makeEvent();
-  const trade = { ...tradeResponseSchema.parse(created.payload), price: '228.5000', version: 2 };
-  const event = { ...created, type: 'TRADE_AMENDED' as const, tradeVersion: 2,
-    payload: { trade, reason: 'Correct price.' } };
-  const h = setup([event]);
-
-  await h.relayer.wake();
-
-  assert.deepEqual(h.delivered, [{
-    schemaVersion: 1, changeId: event.id, type: 'TRADE_AMENDED',
-    occurredAt: event.createdAt.toISOString(), trade,
-  }]);
-  assert.deepEqual(h.published, [event.id]);
-  assert.deepEqual(h.retries, []);
-});
-
-test('invalid amendment payloads and trade identity/version mismatches stay retryable', async () => {
-  const created = makeEvent();
-  const trade = { ...tradeResponseSchema.parse(created.payload), version: 2 };
-  const amendment = { ...created, type: 'TRADE_AMENDED' as const, tradeVersion: 2,
-    payload: { trade, reason: null } };
-  for (const event of [
-    { ...amendment, payload: created.payload },
-    { ...amendment, payload: { trade: { ...trade, price: 228.5 }, reason: null } },
-    { ...amendment, tradeId: makeEvent(3).tradeId },
-    { ...amendment, tradeVersion: 3 },
-  ]) {
+for (const type of ['TRADE_AMENDED', 'TRADE_CANCELLED'] as const) {
+  test(`relayer sends ${type} with the saved version and keeps the reason out of SSE`, async () => {
+    const created = makeEvent();
+    const trade = { ...tradeResponseSchema.parse(created.payload), version: 2,
+      status: type === 'TRADE_CANCELLED' ? 'CANCELLED' : 'ACTIVE' };
+    const event = { ...created, type, tradeVersion: 2, payload: { trade, reason: 'Booking correction.' } };
     const h = setup([event]);
+
     await h.relayer.wake();
-    assert.deepEqual(h.delivered, []);
-    assert.deepEqual(h.published, []);
-    assert.equal(h.retries[0]?.id, event.id);
-    assert.equal(h.pending.has(event.id), true);
-  }
-});
+
+    assert.deepEqual(h.delivered, [{
+      schemaVersion: 1, changeId: event.id, type,
+      occurredAt: event.createdAt.toISOString(), trade,
+    }]);
+    assert.deepEqual(h.published, [event.id]);
+    assert.deepEqual(h.retries, []);
+  });
+
+  test(`invalid ${type} payloads and trade identity/version mismatches stay retryable`, async () => {
+    const created = makeEvent();
+    const trade = { ...tradeResponseSchema.parse(created.payload), version: 2,
+      status: type === 'TRADE_CANCELLED' ? 'CANCELLED' : 'ACTIVE' };
+    const saved = { ...created, type, tradeVersion: 2, payload: { trade, reason: null } };
+    for (const event of [
+      { ...saved, payload: created.payload },
+      { ...saved, payload: { trade: { ...trade, price: 228.5 }, reason: null } },
+      { ...saved, tradeId: makeEvent(3).tradeId },
+      { ...saved, tradeVersion: 3 },
+    ]) {
+      const h = setup([event]);
+      await h.relayer.wake();
+      assert.deepEqual(h.delivered, []);
+      assert.deepEqual(h.published, []);
+      assert.equal(h.retries[0]?.id, event.id);
+      assert.equal(h.pending.has(event.id), true);
+    }
+  });
+}

@@ -10,7 +10,7 @@ export const streamReadySchema = z.strictObject({
 export const tradeChangeSchema = z.strictObject({
   schemaVersion: z.literal(1),
   changeId: z.uuid(),
-  type: z.enum(['TRADE_CREATED', 'TRADE_AMENDED']),
+  type: z.enum(['TRADE_CREATED', 'TRADE_AMENDED', 'TRADE_CANCELLED']),
   occurredAt: z.iso.datetime({ precision: 3 }),
   trade: tradeResponseSchema,
 });

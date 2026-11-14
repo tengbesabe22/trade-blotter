@@ -117,4 +117,4 @@ accepts this type and reuses the existing version-aware cache merge without an
 extra GET for a visible row. Successful PATCH responses enter the same version
 guard and buffer, so an older in-flight page response cannot undo the save. Conflicts, rejections and no-ops produce no event.
 The optional reason remains in the outbox payload and is not included in SSE.
-See the [stream guide](trade-stream-api.md#trade-creation-and-amendment-events).
+See the [stream guide](trade-stream-api.md#trade-change-events).

@@ -29,13 +29,13 @@ function setup() {
   return { repository: createOutboxRepository(database), reads, writes };
 }
 
-test('listPending requests only due pending creation and amendment events in a bounded, deterministic order', async () => {
+test('listPending requests only due pending creation, amendment and cancellation events in a bounded, deterministic order', async () => {
   const h = setup();
   const now = event.createdAt;
 
   assert.deepEqual(await h.repository.listPending(now, 100), [event]);
   assert.deepEqual(h.reads[0]?.where, {
-    type: { in: ['TRADE_CREATED', 'TRADE_AMENDED'] }, status: 'PENDING', nextAttemptAt: { lte: now },
+    type: { in: ['TRADE_CREATED', 'TRADE_AMENDED', 'TRADE_CANCELLED'] }, status: 'PENDING', nextAttemptAt: { lte: now },
   });
   assert.equal(h.reads[0]?.select?.type, true);
   assert.equal(h.reads[0]?.take, 100);
