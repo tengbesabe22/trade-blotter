@@ -31,6 +31,7 @@ async function setup(overrides: Partial<AuthRepository> = {}) {
     {
       auth: repository,
       trades: {
+        listHistory: async () => { throw new Error('Unexpected history lookup in this test.'); },
         listFilterOptions: async () => { throw new Error('Unexpected filter-options lookup in this test.'); },
         cancel: async () => { throw new Error('Unexpected trade cancellation in this test.'); },
         amend: async () => { throw new Error('Unexpected trade amendment in this test.'); },

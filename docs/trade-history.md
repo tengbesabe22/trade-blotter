@@ -1,8 +1,9 @@
 # Trade history storage
 
 **Implemented:** Prisma model, append-only SQL migration and seeded histories.
-Create, amend and cancel now write audit entries transactionally. The history
-API/UI are next.
+Create, amend and cancel write audit entries transactionally. The history read
+contract and repository reads are implemented; endpoint wiring and the history UI
+are next.
 
 ## Stored entry
 
@@ -30,7 +31,8 @@ There is no updatedAt: entries are never edited.
 - Versions must be positive. CREATED requires version 1 and no reason; AMENDED and
   CANCELLED require a later version. Every entry requires an actor.
 - Snapshot JSON must be an object with the same trade ID and numeric version as
-  the entry. Full DTO validation belongs to the upcoming backend contract.
+  the entry. The history response contract defines full DTO validation; read
+  endpoint wiring remains next.
 
 These rules supplement the application. Database owners can alter/drop triggers;
 production runtime credentials should not own the schema. This is not a claim of
@@ -72,6 +74,44 @@ An audit error aborts the transaction. Conflicts, no-ops, missing/forbidden trad
 repeated cancellation and drafts add no successful-change history. Responses and
 SSE payloads are unchanged; outbox delivery is independent of retained audit storage.
 
+## History read contract (endpoint not yet wired)
+
+`GET /api/trades/:id/history` will permit both signed-in roles under the existing
+shared trade visibility rules. The response is
+`{schemaVersion: 1, generatedAt, tradeId, entries}`.
+
+Fetch every retained entry for this trade, newest version first. Individual histories
+are expected to be short, so the MVP has no pagination parameters, pageInfo or silent
+truncation. Trade versions still identify revisions. Reconsider pagination only if
+actual per-trade history sizes justify it. An overall audit listing is deferred.
+
+Each entry contains id, tradeVersion, action, actor `{id, displayName}`, reason,
+recordedAt, full snapshot and changes. No account email/password/role fields are
+included. Changes use `{field, before, after}` and the existing trade field formats;
+after agrees with the snapshot. Only editable business fields and status appear.
+Creation has `changes: []`; amendment/cancellation changes are nonempty, or null
+when the preceding version is unavailable. A nullable before/after value represents
+cleared Book/Counterparty metadata; it does not mean missing historical evidence.
+
+`listHistory(tradeId)` is implemented in the existing trade repository:
+
+1. Check that the trade exists; return not-found before querying audit entries.
+2. Read all its audit entries in descending version order using the existing unique
+   (tradeId, tradeVersion) index. Include only actor ID and display name.
+3. Validate snapshots, derive changes and return the complete entries array.
+
+`trade-history-mapper.ts` compares only consecutive versions: comparing v3 with v1
+cannot establish exactly what changed in v3, so changes is null. Creation uses [].
+Malformed snapshots fail rather than becoming fabricated history. A trade with no
+stored history returns an empty array. Actor display names come from the current
+account record; the trade snapshot remains the historical saved DTO.
+
+Reads need no explicit transaction because retained audit rows are append-only.
+Snapshot and entry validation enforce trade/version agreement, action/state
+consistency and valid field differences. The response contract additionally checks
+that entries belong to the selected trade and have descending unique versions.
+HTTP wiring and the history UI are not implemented.
+
 ## Verification
 
 Disposable PostgreSQL 18 checks covered the three actions, required actors, an
@@ -85,6 +125,10 @@ run through root `pnpm test` and CI; root typecheck includes seed/test TypeScrip
 Repository tests for create/amend/cancel also use fake persistence to verify full
 audit snapshots, actor/reason/version fields, transactional error propagation and
 no history for rejected/conflicting/no-op operations. They verify repository calls,
-not PostgreSQL rollback. No live-database test dependency was added.
+not PostgreSQL rollback. Eight history repository tests cover complete reads (including more than 100
+entries), missing trades, empty histories, all editable field changes,
+cancellation status, missing predecessors, malformed snapshots and database errors.
+These tests use fake persistence and do not verify PostgreSQL execution plans.
+No live-database test dependency was added.
 
 Reference: [PostgreSQL statement-level triggers](https://www.postgresql.org/docs/18/sql-createtrigger.html).

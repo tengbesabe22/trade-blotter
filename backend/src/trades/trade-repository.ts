@@ -17,6 +17,8 @@ import type { NormalizedTradeListQuery } from './listing/trade-query-contract';
 import type { TradeFilterOptions } from './listing/trade-filter-options-contract';
 import type { TradeCursorBoundary } from './listing/trade-cursor';
 import { tradeBoundaryFilter, tradeListFilters, tradeListOrder } from './listing/trade-list-query';
+import type { TradeHistoryEntry } from './history/trade-history-contract';
+import { toTradeHistoryEntries } from './history/trade-history-mapper';
 
 // The mapper needs the symbol and display name, not complete account records.
 export type TradeRecord = Prisma.TradeGetPayload<{
@@ -31,7 +33,12 @@ export type TradePage = {
   hasNextPage: boolean;
 };
 
+export type TradeHistoryResult =
+  | { kind: 'found'; entries: TradeHistoryEntry[] }
+  | { kind: 'not-found' };
+
 export type TradeRepository = {
+  listHistory: (tradeId: string) => Promise<TradeHistoryResult>;
   listFilterOptions: () => Promise<TradeFilterOptions>;
   list: (query: NormalizedTradeListQuery, boundary: TradeCursorBoundary | null) => Promise<TradePage>;
   create: (command: CreateTradeCommand) => Promise<CreateTradeResult>;
@@ -39,7 +46,7 @@ export type TradeRepository = {
   cancel: (command: CancelTradeCommand) => Promise<CancelTradeResult>;
 };
 
-type TradeDatabase = Pick<DatabaseClient, 'trade' | '$transaction' | 'idempotencyRequest' | 'instrument' | 'user'>;
+type TradeDatabase = Pick<DatabaseClient, 'trade' | '$transaction' | 'idempotencyRequest' | 'instrument' | 'user' | 'tradeAudit'>;
 type SavedCreateRequest = { requestFingerprint: string; responseBody: Prisma.JsonValue };
 
 function replayCreateRequest(saved: SavedCreateRequest, fingerprint: string): CreateTradeResult {
@@ -78,6 +85,20 @@ function hasTradeChanges(
 
 export function createTradeRepository(database: TradeDatabase): TradeRepository {
   return {
+    listHistory: async (tradeId): Promise<TradeHistoryResult> => {
+      const trade = await database.trade.findUnique({ where: { id: tradeId }, select: { id: true } });
+      if (!trade) return { kind: 'not-found' };
+
+      // Fetch the complete history for this one trade, using the trade/version index.
+      const rows = await database.tradeAudit.findMany({
+        where: { tradeId },
+        orderBy: { tradeVersion: 'desc' },
+        include: { actor: { select: { id: true, displayName: true } } },
+      });
+
+      return { kind: 'found', entries: toTradeHistoryEntries(rows) };
+    },
+
     listFilterOptions: async () => {
       // Small reference tables: independent reads, without scanning trade history.
       const [instruments, traders] = await Promise.all([

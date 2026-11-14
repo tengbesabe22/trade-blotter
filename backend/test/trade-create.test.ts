@@ -73,6 +73,7 @@ async function setup(options: SetupOptions = {}) {
 
   // The fake supplies persistence outcomes; HTTP validation and mapping remain real.
   const trades: TradeRepository = {
+    listHistory: async () => { throw new Error('Unexpected history lookup in this test.'); },
     listFilterOptions: async () => { throw new Error('Unexpected filter-options lookup in this test.'); },
     cancel: async () => { throw new Error('Unexpected trade cancellation in this test.'); },
     amend: async () => {

@@ -25,6 +25,7 @@ async function setup(role: CurrentUser['role'] = 'TRADER', result = expected, fa
     expiresAt: new Date(now.getTime() + 8 * 60 * 60 * 1000),
   });
   const trades: TradeRepository = {
+    listHistory: async () => { throw new Error('Unexpected history lookup in this test.'); },
     listFilterOptions: async () => {
       calls.options += 1;
       if (fail) throw new Error('Private database credentials');
