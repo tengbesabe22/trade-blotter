@@ -1,170 +1,259 @@
 # Technical Design
 
+[Architecture](#architecture) · [Authentication](#authentication) · [Database](#database) ·
+[API](#api-conventions) · [Listing](#trade-listing) · [Creation](#trade-creation) ·
+[Amend/cancel](#trade-amendments-and-cancellation) · [Audit](#audit-history) ·
+[Positions](#position-summary) · [Diagnostics/tests](#diagnostics-and-testing)
+
+## Architecture
+
+![Trade Blotter architecture](images/trade-blotter-architecture.png)
+
+Overview of the current single-instance backend.
+
+- **Frontend:** React, TypeScript, AG Grid and TanStack Query. Trades and Position
+  Summary have separate tabs; create, amend and cancel share one action panel.
+- **Backend:** one Node.js/Hono process handles authentication, trade requests,
+  outbox delivery and SSE connections. Repositories separate database access
+  from HTTP handling.
+- **Database:** PostgreSQL stores business data and sessions; Prisma manages
+  typed database access and migrations.
+- **Validation:** Zod provides runtime validation and inferred TypeScript types for API contracts.
+
+REST handles requests and mutations. SSE pushes committed trade and position
+updates to connected clients. Delivery does not block the mutation response.
+See [Real-time Updates](realtime.md) for delivery/reconnection and
+[Decisions and Scaling](decisions.md) for limits and production plans.
+
+## Authentication
+
+```mermaid
+sequenceDiagram
+    participant browser as Browser
+    participant api as Hono API
+    participant database as PostgreSQL
+
+    browser->>api: Login with email and password
+    api->>database: Load account
+    database-->>api: Account and role
+    api->>api: Verify password and create session token
+    api->>database: Save session with token hash
+    database-->>api: Session saved
+    api-->>browser: User and HttpOnly session cookie
+
+    browser->>api: Subsequent request with cookie
+    api->>database: Load session and user
+    database-->>api: Session and current role
+    api->>api: Check expiry and permissions
+    api-->>browser: Response
+
+    browser->>api: Logout with cookie
+    api->>database: Delete session
+    api-->>browser: Clear session cookie
+```
+
+Passwords use individually salted hashes. Login creates a random session token;
+the browser receives it in an HttpOnly cookie and PostgreSQL stores only its hash.
+The frontend does not store tokens in local storage. This is a database-session
+model, without separate access/refresh tokens.
+
+| Policy | Behavior |
+| --- | --- |
+| Session lifetime | Maximum 8 hours; expires after 5 minutes without user activity. |
+| Background activity | SSE, lookups and automatic snapshot reads do not extend idle time. |
+| Browser restoration | One `/me` request on startup restores the signed-in user; no polling. |
+| Browser protection | SameSite cookie, HTTPS/Secure cookie in production, trusted Origin for mutations. |
+| Logout | Removes the database session; subsequent validation rejects it. Open SSE connections recheck sessions before events and on heartbeats. |
+
+| Role | Permissions |
+| --- | --- |
+| TRADER | View all trades/history/positions; create trades; amend/cancel own ACTIVE trades. |
+| READ_ONLY | View all trades/history/positions and receive live updates; no mutations. |
+
+The backend enforces permissions even when the UI hides unavailable actions.
+Federation and shared rate limiting are [production work](decisions.md#production-path).
+
 ## Database
 
-PostgreSQL stores trades and their transaction records; Prisma owns queries and
-migrations. Start with the [schema](../database/prisma/schema.prisma). SQL-only
-checks and triggers live in the [migrations](../database/prisma/migrations).
+### Data model
 
-### Schema and relationships
-
-| Table | Purpose and relationship |
+| Table | Responsibility |
 | --- | --- |
-| [Instrument](../database/prisma/schema.prisma) | Seeded USD equity catalogue; one instrument has many trades and at most one summary row. |
-| [User](../database/prisma/schema.prisma) | Individual account and role; owns trades, sessions and idempotency requests, and acts on audit/outbox records. |
-| [Session](../database/prisma/schema.prisma) | Belongs to one user; stores a token hash, last activity and maximum expiry. |
-| [Trade](../database/prisma/schema.prisma) | Current trade state; belongs to one user and instrument; has many versioned audit/outbox records. |
-| [IdempotencyRequest](../database/prisma/schema.prisma) | Saves one creation response and fingerprint per user/key for safe retries. |
-| [TradeAudit](../database/prisma/schema.prisma) | Append-only creation/amendment/cancellation snapshots, linked to the trade and actor. |
-| [SymbolSummary](../database/prisma/schema.prisma) | Current ACTIVE-trade totals per instrument across all traders/books and dates. |
-| [OutboxEvent](../database/prisma/schema.prisma) | Durable delivery intent linked to a trade version and actor; publication/retry state remains mutable. |
+| Instrument | Seeded USD equities available for trading. |
+| User | Individual account, role and ownership of trades. |
+| Session | User session, token hash, activity and expiry. |
+| Trade | Current state of one execution, linked to its owner and instrument. |
+| TradeAudit | Append-only history of successful trade changes and their actors. |
+| SymbolSummary | Current ACTIVE-trade totals per instrument across the desk. |
+| OutboxEvent | Saved trade/summary event and its delivery/retry state. |
+| IdempotencyRequest | Original creation response and request identity for safe retries. |
 
-IDs are UUID primary keys. Foreign keys prevent orphan records. Referenced trades,
-users and instruments generally cannot be deleted while dependent business records
-exist. User-to-session deletion cascades; the other deletion relationships restrict.
+The [schema](../database/prisma/schema.prisma) defines fields and relationships;
+[migrations](../database/prisma/migrations) also contain database checks and
+append-only audit enforcement.
 
-### Stored values and constraints
+### Integrity and transactions
 
-- Trade quantity is `Decimal(20,6)`; price is `Decimal(18,4)`. Summary quantities use
-  `Decimal(28,6)` and executed values use `Decimal(38,10)`. API/snapshot amounts are
-  decimal strings. Summary net quantity is derived in
-  [toSymbolSummary](../backend/src/trades/summaries/trade-summary-mapper.ts) as bought minus sold.
-- Timestamps use `timestamptz(3)` and serialize to UTC. `tradeDate` is execution
-  time; `createdAt` is insertion time. Prisma manages `@updatedAt`; raw SQL updates
-  must set it explicitly.
-- Enums restrict side, status, role and action/event types. Book/counterparty are
-  optional text fields; neither has a separate reference table.
-- [Trade_price_check](../database/prisma/migrations/20261111065538_init/migration.sql) enforces `0 < Trade.price <= 1,000,000`;
-  [summary checks](../database/prisma/migrations/20261114164348_add_symbol_summary/migration.sql) enforce nonnegative/non-NaN totals and nonnegative versions. Quantity bounds and trade ownership,
-  status and expected-version checks currently live in API/repository logic.
-- Audit checks require creation at version 1 with no reason, later actions above
-  version 1, and snapshot ID/version matching its row. A statement-level trigger
-  rejects UPDATE, DELETE and TRUNCATE. This protects ordinary database operations;
-  privileged administrators can change enforcement. See the
-  [audit checks](../database/prisma/migrations/20261114105141_add_trade_audit/migration.sql) and [reject_trade_audit_changes](../database/prisma/migrations/20261114105141_add_trade_audit/migration.sql).
+- Exact decimals preserve quantities and prices; the API sends them as strings.
+  Quantity supports six decimal places and price four; excess precision is rejected.
+- Timestamps represent UTC instants. Execution time and recording time are distinct.
+- Foreign keys preserve relationships. Unique rules prevent duplicate instruments,
+  accounts, idempotency keys per user, summaries per instrument and audit/outbox
+  entries per trade version.
+- Trade changes, audit history, affected summaries and the outbox commit together.
+  Creation also saves its idempotency response. Failure rolls back all related writes.
+- Audit history is append-only. Outbox delivery status remains mutable because
+  publication and retries happen after commit.
 
-### Indexes and their query paths
+### Indexes
 
-Primary keys and unique declarations create indexes as well as enforcing identity.
-The `Trade.id` index narrows mutation checks to one candidate row; a separate
-`(id, userId, status, version)` index is unnecessary for that lookup; see the
-[guarded cancellation update](../backend/src/trades/trade-repository.ts).
+Indexes support trader/instrument filtering, newest-first trade pages, session
+validation, per-trade history and pending outbox delivery. The trade-date/ID index
+supports the default ordering without a separate sort in the observed local plan.
+That query-plan check is not a capacity benchmark.
 
-| Unique index | Correctness rule and code path |
-| --- | --- |
-| [Instrument(symbol)](../database/prisma/migrations/20261111065538_init/migration.sql) | One catalogue entry per ticker; [instrument lookup](../backend/src/trades/trade-repository.ts). |
-| [User(email)](../database/prisma/migrations/20261111065538_init/migration.sql) | One account per email; [findUser](../backend/src/auth/auth-repository.ts). |
-| [Session(tokenHash)](../database/prisma/migrations/20261111065538_init/migration.sql) | Unique token hash; [findSession](../backend/src/auth/auth-repository.ts), [touchSession](../backend/src/auth/auth-repository.ts), [deleteSession](../backend/src/auth/auth-repository.ts). |
-| [SymbolSummary(instrumentId)](../database/prisma/migrations/20261114164348_add_symbol_summary/migration.sql) | One desk summary per instrument; [updateSymbolSummary](../backend/src/trades/trade-repository.ts) / [creation upsert](../backend/src/trades/trade-repository.ts). |
-| [IdempotencyRequest(userId, key)](../database/prisma/migrations/20261111065538_init/migration.sql) | One saved creation per user/key; [lookup](../backend/src/trades/trade-repository.ts) / [concurrent-winner recovery](../backend/src/trades/trade-repository.ts). |
-| [TradeAudit(tradeId, tradeVersion)](../database/prisma/migrations/20261114105141_add_trade_audit/migration.sql) | One audit entry per revision; [listHistory](../backend/src/trades/trade-repository.ts) reads one trade in version order. |
-| [OutboxEvent(tradeId, tradeVersion)](../database/prisma/migrations/20261111065538_init/migration.sql) | One saved event per revision; [creation event insert](../backend/src/trades/trade-repository.ts). Does not prevent duplicate delivery. |
+### Migrations and seed
 
-| Ordinary index | Query justification |
-| --- | --- |
-| [Trade(userId)](../database/prisma/migrations/20261111065538_init/migration.sql) | Trader-ID filtering in [tradeListFilters](../backend/src/trades/listing/trade-list-query.ts). |
-| [Trade(instrumentId)](../database/prisma/migrations/20261111065538_init/migration.sql) | [Ticker filter](../backend/src/trades/listing/trade-list-query.ts) and [seed summary join](../database/prisma/seed-symbol-summaries.ts). |
-| [Trade(tradeDate, id)](../database/prisma/migrations/20261115113459_add_trade_date_id_index/migration.sql) | Newest-first ordering: [tradeListOrder](../backend/src/trades/listing/trade-list-query.ts) and [list](../backend/src/trades/trade-repository.ts). Scans backward for descending order. |
-| [Session(userId)](../database/prisma/migrations/20261111065538_init/migration.sql) | [User-to-session cascade](../database/prisma/migrations/20261111065538_init/migration.sql) lookup; no direct user-session listing endpoint. |
-| [OutboxEvent(status, nextAttemptAt, createdAt)](../database/prisma/migrations/20261111065538_init/migration.sql) | [listPending](../backend/src/trades/outbox/outbox-repository.ts) eligibility and earliest-attempt ordering. Final ID tie-breaker is outside this index. |
+Migrations define the database structure and SQL protections. Review generated SQL
+before applying it; seeding is a separate operation. Commands are in the
+[README](../README.md#checks-and-build).
 
-Index availability does not guarantee planner selection.
-
-To inspect the default first page (100 rows plus one to detect a next page):
-
-```sql
-EXPLAIN (ANALYZE, BUFFERS)
-SELECT t.*
-FROM "Trade" AS t
-ORDER BY t."tradeDate" DESC, t."id" DESC
-LIMIT 101;
-```
-
-A local 503-row plan changed from sequential scan plus top-N sort to a backward
-`Trade_tradeDate_id_idx` scan producing 101 rows with no separate sort. This is
-query-plan evidence, not a load benchmark; Prisma relation loading adds other work.
-
-### Transaction boundaries
-
-[create](../backend/src/trades/trade-repository.ts) commits trade, audit, summary, outbox and idempotency response
-together. [amend](../backend/src/trades/trade-repository.ts) / [cancel](../backend/src/trades/trade-repository.ts) commit trade, audit, any summary change and outbox together.
-A failed write rolls back its transaction. Publication occurs after commit.
-Versions identify revisions; atomic conditional updates provide concurrency safety.
-
-### Migrations
-
-The [Prisma CLI configuration](../database/prisma.config.ts) loads `database/.env` for
-CLI commands; the API reads `backend/.env`. Point both at the intended database.
-Run from the repository root:
-
-```sh
-pnpm db:validate
-pnpm db:migrate:create --name change_name
-# Review generated SQL, including existing custom checks/triggers.
-pnpm db:migrate:dev
-```
-
-Migration history contains the SQL protections absent from the Prisma model.
-Apply that history when initializing a database. Seeding is a separate step.
-
-### Seed
-
-Run `pnpm db:seed`. A fresh database receives 10 instruments, 4 demo accounts,
-500 synthetic trades, 649 audit entries and 10 symbol summaries. Demo credentials
-are in the [README](../README.md#demo-accounts).
-
-[seed](../database/prisma/seed.ts) calls [hashPassword](../database/prisma/seed.ts) with individual salts before
-opening the seed transaction. Catalogue/accounts are upserted; fixed-ID trades and
-histories are inserted together. Summaries are initialized from ACTIVE trades,
-including zero rows for unused instruments. Sessions, outbox and idempotency rows
-are not seeded.
-
-Reruns preserve existing accounts, trades, history and summary rows, reporting only
-newly inserted records. The seed is not a repair/rebuild command for changed or
-missing historical data. See [createSeedTradeFixtures](../database/prisma/seed-trades.ts) / [insertSeedTradeFixtures](../database/prisma/seed-trades.ts)
-and [insertSeedSymbolSummaries](../database/prisma/seed-symbol-summaries.ts).
+A fresh seed supplies 10 instruments, four demo accounts, 500 synthetic trades,
+their audit histories and initial summaries. Reruns preserve existing records;
+the seed is not a repair tool. Sessions, delivery events and idempotency responses
+are not seeded. Demo credentials are in the [README](../README.md#demo-accounts).
 
 ## API Conventions
 
-### Contracts and normalization
+Requests and responses have typed contracts with runtime validation. Inputs are
+normalized before storage: symbols are standardized, text is trimmed and dates
+become UTC. Unknown request fields and invalid values are rejected.
 
-Trade contracts use Zod for runtime validation and inferred TypeScript types.
-Strict request objects reject unknown fields. Parsing normalizes accepted input
-before persistence and creation fingerprinting:
+Public trade responses contain symbol, trader, owner, execution details, status
+and version. Decimal amounts are strings; timestamps are UTC. Account credentials
+and internal database relations are excluded. `schemaVersion` identifies the
+response format; `trade.version` identifies a trade revision.
 
-| Field | Accepted input → normalized value |
+### Endpoints
+
+| Area | Endpoints |
 | --- | --- |
-| [Symbol](../backend/src/trades/creation/trade-create-contract.ts) | `" aapl "` → `"AAPL"` |
-| [Quantity / price](../backend/src/trades/trade-contract.ts) | Decimal strings → six / four fractional digits; excess precision is rejected rather than rounded. |
-| [Execution time](../backend/src/trades/trade-contract.ts) | Seconds and timezone required, with at most millisecond precision → [UTC conversion](../backend/src/trades/creation/trade-create-contract.ts) with three fractional digits. |
-| [Creation book / counterparty](../backend/src/trades/creation/trade-create-contract.ts) | Missing, null or trimmed blank → `null`; other text is trimmed. |
-| [Amendment book / counterparty](../backend/src/trades/amendments/trade-amend-contract.ts) | Omitted → unchanged; null or trimmed blank → cleared. |
+| Health | `GET /api/health` |
+| Authentication | `POST /api/auth/login`, `GET /api/auth/me`, `POST /api/auth/logout` |
+| Blotter | `GET /api/trades`, `GET /api/trades/filter-options` |
+| Creation | `POST /api/trades` |
+| Amendment | `PATCH /api/trades/:id` |
+| Cancellation | `POST /api/trades/:id/cancel` |
+| History | `GET /api/trades/:id/history` |
+| Positions | `GET /api/summaries` |
+| Live updates | `GET /api/events` — [event contract](realtime.md#event-contract) |
 
-Amounts use Decimal arithmetic rather than JavaScript Number conversion. Bounds
-are defined in [quantitySchema](../backend/src/trades/trade-contract.ts) and
-[priceSchema](../backend/src/trades/trade-contract.ts);
-response schemas require fixed-scale values before normalization can run.
+Business endpoints require a valid session; mutations also enforce trader role,
+trusted Origin, JSON and bounded request size. Successful trade mutations return
+`{trade}`. Creation returns 201, including safe replays of the original result.
 
-### Request, command and response
+Errors use `{code,message}`. Invalid input returns 400, missing/expired sessions
+401, forbidden actions 403, missing trades 404 and concurrency/idempotency conflicts
+409. Stale-trade conflicts also include the current trade so the user can review it.
+Oversized/unsupported bodies return 413/415; unexpected failures return a sanitized
+500 response. Authenticated responses are not stored in HTTP caches.
 
-| Type | Boundary |
+## Trade Listing
+
+Sorting and filtering happen on the server. Each request returns a bounded page:
+100 trades by default, at most 200, newest execution first. ID breaks sorting ties.
+The UI shows the loaded count rather than an exact matching total.
+
+| Control | Behavior |
 | --- | --- |
-| [CreateTradeRequest](../backend/src/trades/creation/trade-create-contract.ts) | HTTP body input (`z.input`), before parsing. |
-| [NormalizedCreateTradeRequest](../backend/src/trades/creation/trade-create-contract.ts) | Parsed body (`z.output`), including normalized decimals, UTC time and nullable metadata. |
-| [CreateTradeCommand](../backend/src/trades/creation/trade-create-contract.ts) | Repository input: normalized body plus session user ID, idempotency header key and server-computed fingerprint. |
-| [TradeResponse](../backend/src/trades/trade-contract.ts) | Public DTO with decimal strings, UTC timestamps, symbol, trader display name and owner ID. |
+| Ticker, trader, status, side | Exact selection; All removes that filter. |
+| Book, counterparty | Partial, case-insensitive matching. |
+| Trade dates | From/Through cover whole UTC days. |
+| Sorting | Execution time, symbol, trader, quantity, price or status; ascending/descending. |
 
-[toTradeResponse](../backend/src/trades/trade-mapper.ts) flattens the database's
-instrument/user relations and formats Decimal/Date values. Full relation objects
-and account credentials are excluded. [toTradeCursorBoundary](../backend/src/trades/trade-mapper.ts) extracts the selected sort value
-and ID for cursor boundaries.
+The API returns a cursor for the next page. The frontend remembers earlier cursors
+for Previous navigation; changing filters, sorting or page size returns to page one.
+Pages reflect current data rather than a frozen historical snapshot.
 
-Successful trade mutations return `{trade}` ([createTradeResponseSchema](../backend/src/trades/creation/trade-create-contract.ts)). Listing returns
-`{schemaVersion, generatedAt, trades, pageInfo}` ([tradeListResponseSchema](../backend/src/trades/trade-contract.ts)). Its fixed `schemaVersion: 1`
-identifies the supported response format; it is separate from `trade.version`,
-which advances on successful amendments/cancellation. No format negotiation exists.
+Text/date filters apply together. Instrument/trader lookups share a frontend cache
+across creation and filtering. The grid displays the server result; live updates
+merge into it, with bounded reconciliation when ordering or membership changes.
+See [live page handling](realtime.md#frontend-processing).
 
-Sources: [createTradeRequestSchema](../backend/src/trades/creation/trade-create-contract.ts)
-and [tradeChangesSchema](../backend/src/trades/amendments/trade-amend-contract.ts).
-Checks: [normalization test](../backend/test/trade-create-contract.test.ts) and
-[public mapping test](../backend/test/trades.test.ts).
+## Trade Creation
+
+```text
+Validate request → check safe retry → save trade and related records
+                → respond to caller + wake live delivery
+```
+
+A trader selects an instrument and supplies side, quantity, price, execution time
+and optional book/counterparty. Each submission includes an idempotency key.
+
+The same user/key with the same normalized request returns the original result;
+reusing it with different input returns a conflict. Concurrent identical submissions
+produce one committed trade. An uncertain network outcome retains the original
+key/input so retrying cannot create a duplicate.
+
+## Trade Amendments and Cancellation
+
+Only the owner can change an ACTIVE trade. Each request supplies the version the
+user reviewed. The database accepts the change only if that version is still current,
+then advances it. Concurrent edits cannot silently overwrite each other.
+
+| Action | Behavior |
+| --- | --- |
+| Amend | Change side, quantity, price, execution time, book or counterparty. Omitted fields remain unchanged; null/blank metadata clears it. No-op changes are rejected. |
+| Cancel | Mark CANCELLED; retain the row and history. Cancelled trades cannot be amended or restored. |
+| Both | Optional reason; stale requests return the current trade for explicit review. |
+
+The instrument is immutable after creation. A wrong symbol requires cancel + create;
+those are separate operations.
+
+The action panel preserves drafts during live updates and asks the user to review
+newer data before saving. Successful responses update the caller immediately; SSE
+updates other clients. Only committed changes trigger delivery.
+
+## Audit History
+
+Creation, amendment and cancellation each save the resulting trade snapshot, actor,
+version, time and optional reason. Drafts, rejected requests and creation replays
+produce no additional history.
+
+Both roles can inspect any trade's history in a separate view, newest first, with
+changed fields highlighted. History refreshes manually and currently returns the
+whole per-trade history. Global audit search is deferred.
+
+## Position Summary
+
+The Position Summary shows current desk-wide bought, sold and net quantities per
+symbol, with Long/Short/Flat direction. It covers ACTIVE trades across all traders,
+books and dates, assumes zero opening balances and is independent of blotter filters.
+
+Totals are maintained in the same transaction as trade changes. Amendments apply
+the difference; cancellation removes that trade's contribution. For example,
+amending BUY 10 to BUY 12 adds two units; cancelling it removes twelve.
+
+The server pushes the resulting summary snapshot with the trade event. Independent
+summary versions prevent duplicate or older events from replacing newer totals.
+Reconnection reloads the current baseline. See [live cache behavior](realtime.md#frontend-processing).
+P&L, market valuation and historical positions remain deferred.
+
+## Diagnostics and Testing
+
+### Logging
+
+Structured JSON logs cover HTTP outcomes, outbox failures/retries and SSE lifecycle.
+Request, connection and change identifiers connect related logs. Credentials,
+session tokens, identities and financial payloads are excluded from these logs.
+
+Server timing does not prove browser receipt or end-to-end latency. Client
+p50/p95/p99 measurements and deployment verification remain pending.
+
+### Testing
+
+Automated tests cover validation, permissions, trade mutations, exact calculations,
+audit behavior, delivery/retries and frontend/cache interactions. Database operations
+are faked; the suite does not prove PostgreSQL concurrency, rollback or production
+capacity. CI runs type checks, tests, builds and frontend lint without a live database.
+See [validation commands](../README.md#checks-and-build).

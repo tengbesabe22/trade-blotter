@@ -1,93 +1,59 @@
 # Trade Blotter
 
-A TypeScript application for viewing and recording USD equity trades.
+A USD equities workspace for recording trades, following live changes and viewing
+current desk positions. React/TypeScript, Vite, Tailwind, AG Grid and TanStack Query
+connect to a Hono/TypeScript API backed by Prisma and PostgreSQL. Zod validates
+API request and response contracts.
 
-**Working:** individual login/logout, database sessions, trade listing, and trade
-creation with validation, idempotent retries, and transactional outbox storage.
-Trade reads support bounded cursor pages, server sorting, and filtering.
-Traders can amend or cancel their own ACTIVE trades through inline panels, with
-ownership/version checks, immediate cache updates and SSE delivery.
+## Scope
 
-Position Summary has its own tab with desk-wide Bought/Sold/Net quantities and
-Long/Short/Flat direction. It shares live updates with the Trades tab and preserves
-filters, pagination and drafts when switching views.
-
-**Next:** documentation cleanup, p95/p99 load checks and deployment.
-P&L is an optional follow-up.
-The frontend supports login, session restoration, logout, and a read-only trade
-grid with server sorting, Previous/Next pagination, manual refresh, and loading/empty/error states.
-Ticker, Trader, Status, Side, Book, Counterparty and UTC date filters run on the
-server and also apply to live events.
-Ticker/trader options share the same cached lookup used by Create trade.
-A row leaving the selection disappears immediately; a batched page fetch fills the gap.
-The desktop workspace places sorting/filter controls and the default Create trade form
-to the right of the grid. Amend/Cancel temporarily replace creation in that panel,
-preserving its draft. Pending or unconfirmed creation blocks switching actions.
-Create trade searches a cached instrument list by ticker/company name and requires
-a valid selection. Successful creation refreshes the current page.
-SSE inserts creation events directly into the default first-page cache. Other pages
-and sorts retain their position; the new-trade notice appears only on older pages.
-Ordering/membership changes batch for 100 ms before a background read of the same
-page. Ordinary field edits need no read. A stale Next cursor stays disabled until
-reconciliation supplies a fresh one; older pages retain their new-trade notice.
+- Individual trader and read-only accounts; traders amend/cancel only their own ACTIVE trades.
+- Server-side sorting/filtering, cursor pages, creation, amendments and cancellations.
+- Full-trade and position updates over SSE with transactional outbox recovery.
+- Append-only audit history, a separate history view and a Position Summary tab.
+- Structured logging and CI checks. P&L remains deferred.
 
 ## Run locally
 
-Use Node **24.14.0**, pnpm **12.11.2**, and a running Docker engine.
-Run these commands from the repository root.
-
-### 1. Install and configure
+Use Node **24.14.0**, pnpm **12.11.2** and a running Docker engine. From the root:
 
 ```sh
 pnpm install --frozen-lockfile
 cp backend/.env.example backend/.env
 cp database/.env.example database/.env
-```
-
-On PowerShell, use `Copy-Item` in place of `cp`.
-The API reads `backend/.env`; Prisma CLI commands read `database/.env`.
-The examples point both to the same local database.
-
-### 2. Prepare the database
-
-```sh
 pnpm db:up
 pnpm db:migrate:dev
 pnpm db:seed
-```
-
-PostgreSQL starts in the background on `localhost:5432`.
-Seeding creates 10 instruments, 4 accounts, 500 synthetic trades and 649 synthetic
-audit entries with coherent creation/amendment/cancellation histories. Trade and
-history inserts share one transaction. Rerunning preserves existing records,
-passwords, trade changes and audit history, reporting only newly inserted rows.
-Create, amend and cancel now append audit snapshots transactionally; the history
-API/UI remain separate work; see the
-[history storage guide](docs/trade-history.md).
-
-### 3. Start the API
-
-```sh
 pnpm dev
 ```
 
-The API runs at `http://localhost:3000`.
-Check `GET /api/health` for `{"status":"ok"}`.
-The API writes JSON startup/request logs to stdout. See the
-[logging guide](docs/backend-logging.md) for `LOG_LEVEL`, request IDs and privacy controls.
-
-Start the frontend in another terminal:
+Use `Copy-Item` instead of `cp` in PowerShell. Start the frontend in another terminal:
 
 ```sh
 pnpm --filter @trade-blotter/frontend dev
 ```
 
-Sign in with a demo account to view trades. The frontend uses the `/api` dev proxy.
-See the [frontend guide](frontend/README.md) for the component and request flow.
+Open **http://localhost:5173**. The API is **http://localhost:3000**;
+`GET /api/health` returns `{"status":"ok"}`. Vite proxies `/api` during development;
+port 5173 must be available. PostgreSQL runs in the background on localhost:5432.
+
+A fresh seed creates 10 instruments, 4 accounts, 500 synthetic trades, 649 audit
+entries and 10 summaries. Reruns preserve existing data and report inserted counts.
+The named Docker volume retains database data across container restarts.
+
+### Configuration
+
+| Variable | Location / meaning |
+| --- | --- |
+| `DATABASE_URL` | `backend/.env` and `database/.env`; both must target the intended PostgreSQL database. |
+| `APP_ORIGIN` | Backend; allowed browser origin, default `http://localhost:5173`. |
+| `PORT` | Backend; default 3000. |
+| `LOG_LEVEL` | Backend JSON logging; default `info`, `debug` adds delivery records. |
+| `NODE_ENV` | `production` enables Secure cookies and requires an HTTPS `APP_ORIGIN`. |
 
 ## Demo accounts
 
-All four accounts use the local demo password **`LocalDemo!2026`**.
+All use the local demo password **`LocalDemo!2026`**. All trades and prices are fictional.
 
 | Email | Role |
 | --- | --- |
@@ -96,32 +62,8 @@ All four accounts use the local demo password **`LocalDemo!2026`**.
 | `mlee@example.com` | Trader |
 | `reviewer@example.com` | Read-only |
 
-Both roles can list all trades. Only traders can create trades; ownership comes
-from the session. Traders can amend only their own ACTIVE trades with the expected
-version. Cancellation uses an inline confirmation panel with an optional reason;
-cancelled rows remain visible and receive no further mutation actions.
-All seeded trades and prices are fictional.
-
-## API guide
-
-| Method | Endpoint | Purpose |
-| --- | --- | --- |
-| GET | `/api/health` | Health check |
-| POST | `/api/auth/login` | Sign in with email/password |
-| GET | `/api/auth/me` | Read the current account and role |
-| POST | `/api/auth/logout` | Revoke the current session |
-| GET | `/api/trades` | Read a bounded, sortable/filterable cursor page |
-| GET | `/api/trades/filter-options` | Read instrument/trader dropdown options |
-| GET | `/api/summaries` | Read current desk-wide symbol positions |
-| GET | `/api/events` | Stream trade changes with heartbeats and session checks |
-| POST | `/api/trades` | Create a trade or replay its saved response |
-| PATCH | `/api/trades/:id` | Amend an owned active trade |
-| POST | `/api/trades/:id/cancel` | Cancel an owned active trade |
-
-Start with [authentication and curl examples](docs/authentication.md), then
-[listing trades](docs/trade-list-api.md), [creating a trade](docs/trade-create-api.md),
-[amending trades](docs/trade-amend-api.md), [cancelling trades](docs/trade-cancel-api.md),
-the [SSE connection](docs/trade-stream-api.md), and [position summaries](docs/trade-summaries.md).
+Use separate browser profiles or normal/private windows for two accounts; ordinary
+tabs share cookies. Create/amend/cancel in one and observe updates in the other.
 
 ## Checks and build
 
@@ -133,46 +75,44 @@ pnpm --filter @trade-blotter/frontend lint
 pnpm --filter @trade-blotter/frontend build
 ```
 
-Root typecheck/build commands build the database package first, then check/build
-the backend. `pnpm test` runs both backend and frontend tests. `pnpm start` runs
-the compiled API. Frontend lint/build are separate.
+Root checks build the database package before the backend. Root tests cover database
+helpers, backend and frontend without requiring a running PostgreSQL instance.
+`pnpm start` runs the built API; frontend static output is in `frontend/dist`.
+GitHub Actions runs the checks on main pushes, pull requests and manual dispatch.
 
-GitHub Actions runs these checks with a frozen install on pushes to `main`, pull
-requests, and manual dispatch. Database seed tests and backend tests use fake database
-operations; frontend API/component tests mock fetch. Neither needs a running PostgreSQL instance.
-
-Live database concurrency/rollback verification and p50/p95 measurements remain
-pending. Outbox records are stored; the relayer wakes after committed creates/amendments,
-at startup and every second for recovery. SSE creation/amendment/cancellation delivery, heartbeats
-and session checks are implemented for one backend process. Browser subscriptions
-update the default first page directly and resynchronise the current page after
-reconnection. Relevant ordering/membership changes also reconcile the current page
-without moving the user to page one.
-
-## Project map
-
-| Location | Contents |
+| Database command | Purpose |
 | --- | --- |
-| `backend/` | Hono API, authentication, trade contracts, and repositories |
-| `frontend/` | React auth/trade UI, API clients, AG Grid Community, TanStack Query, and Tailwind CSS |
-| `database/` | Prisma schema/client, migrations, and rerun-safe seed |
-| `docs/` | Authentication and trade API guides |
+| `pnpm db:logs` | Follow PostgreSQL logs. |
+| `pnpm db:down` | Stop containers and retain their volume. |
+| `pnpm db:validate` | Validate the Prisma schema. |
+| `pnpm db:migrate:create --name change_name` | Generate a migration for review without applying it. |
+| `pnpm db:migrate:dev` | Apply local development migrations. |
+| `pnpm db:seed` | Seed synthetic data. |
+| `pnpm db:studio` | Inspect the database. |
 
-New behavior follows test-driven development. Keep changes small, readable, and
-terminated with semicolons. See [AGENTS.md](AGENTS.md) for collaboration conventions.
+## Documentation
 
-Backend imports are extension-free. `tsx` runs development source; esbuild bundles
-local modules for Node, keeping package dependencies external.
-
-## Database commands
-
-| Command | Use |
+| Guide | Read for |
 | --- | --- |
-| `pnpm db:logs` | Follow PostgreSQL logs; Ctrl+C stops following |
-| `pnpm db:down` | Stop containers while retaining database data |
-| `pnpm db:validate` | Validate the Prisma schema/configuration |
-| `pnpm db:migrate:create` | Generate a migration for review without applying it |
-| `pnpm db:migrate:dev` | Apply migrations to the local development database |
-| `pnpm db:studio` | Open Prisma Studio |
+| [Technical Design](docs/technical-design.md) | Architecture, authentication, database, API contracts, trade flows, audit, positions and diagnostics. |
+| [Real-time Updates](docs/realtime.md) | Outbox delivery, SSE connections, frontend merging and reconnect recovery. |
+| [Decisions and Scaling](docs/decisions.md) | Rationale, alternatives, limits and production scaling needs. |
 
-The named Docker volume preserves local data. Removing that volume deletes it.
+Code links name the relevant function/declaration; search that symbol in the linked
+file. Line-number anchors are intentionally avoided because edits move them.
+
+## Deployment
+
+Currently only PostgreSQL is containerized. Backend container packaging, AWS hosting
+and deployment automation are pending; CI currently verifies code rather than deploying it.
+
+Deployment must provide HTTPS, an exact `APP_ORIGIN`, database connectivity and
+same-origin `/api` routing for the static frontend. Vite's proxy is development-only.
+The API runtime also needs its external workspace/npm dependencies and generated
+Prisma client. Apply SQL migrations before starting the application; seed is an
+explicit demo-data operation. Forward container stdout to the hosting log service.
+
+SSE routing must avoid response buffering and support long-lived connections. Start
+with one API instance; multi-instance fan-out needs the changes in
+[Decisions and Scaling](docs/decisions.md#production-path). Deployment instructions
+and p50/p95/p99 results will be added after those tasks are implemented and verified.
