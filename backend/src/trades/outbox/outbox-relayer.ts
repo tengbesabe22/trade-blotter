@@ -1,4 +1,7 @@
 import { z } from 'zod';
+import type { Logger } from 'pino';
+import { createLogger } from '../../logging/logger';
+import { errorMetadata } from '../../logging/error-metadata';
 import { tradeResponseSchema } from '../trade-contract';
 import type { OutboxRepository } from './outbox-repository';
 import { tradeChangeSchema, type TradeChange } from '../sse/trade-stream-contract';
@@ -13,7 +16,11 @@ const BATCH_SIZE = 100;
 const RETRY_BASE_DELAY_MS = 1000;
 const MAX_RETRY_DELAY_MS = 30_000;
 
-type RelayerOptions = { now?: () => Date; onError?: (error: unknown) => void };
+type RelayerOptions = {
+  now?: () => Date;
+  logger?: Logger;
+  onError?: (error: unknown) => void;
+};
 
 export function createOutboxRelayer(
   repository: OutboxRepository,
@@ -21,18 +28,24 @@ export function createOutboxRelayer(
   options: RelayerOptions = {},
 ) {
   const now = options.now ?? (() => new Date());
-  const onError = options.onError ?? (() => {
-    console.error('Outbox relay failed; pending events will be retried on a later wake.');
-  });
+  const logger = options.logger ?? createLogger('silent');
+  const onError = options.onError ?? (() => {});
   let activeRun: Promise<void> | null = null;
   let wakeRequested = false;
 
   async function relayPending() {
     while (wakeRequested) {
       wakeRequested = false;
-      const events = await repository.listPending(now(), BATCH_SIZE);
+      const events = await repository.listPending(now(), BATCH_SIZE).catch((error: unknown) => {
+        logger.error({ event: 'outbox.failed', operation: 'list_pending', ...errorMetadata(error) });
+        throw error;
+      });
 
       for (const event of events) {
+        // Capture the attempt before scheduleRetry increments the saved retry count.
+        const metadata = { changeId: event.id, type: event.type, attempt: event.retries + 1 };
+        let operation = 'validate_payload';
+
         try {
           const { trade, summaries } = tradePayloadSchema.parse(event.payload);
           const change = tradeChangeSchema.parse({
@@ -43,18 +56,37 @@ export function createOutboxRelayer(
             throw new Error('Outbox trade identity/version mismatch.');
           }
 
+          operation = 'broadcast';
           broadcast(change);
           // Local hand-off, not browser acknowledgement. A crash before marking
           // can repeat delivery, so clients must merge by trade ID/version.
+          operation = 'mark_published';
           await repository.markPublished(event.id, now());
         } catch (error) {
           // On failure, schedule a retry: 1, 2, 4, 8, 16, then at most 30 seconds.
           const backoffMs = Math.min(MAX_RETRY_DELAY_MS, RETRY_BASE_DELAY_MS * 2 ** event.retries);
+          const nextAttemptAt = new Date(now().getTime() + backoffMs);
           await repository.scheduleRetry(
-            event.id, new Date(now().getTime() + backoffMs),
+            event.id, nextAttemptAt,
             error instanceof Error ? error.name : 'RelayError',
-          );
+          ).catch((retryError: unknown) => {
+            logger.error({
+              event: 'outbox.failed', operation: 'schedule_retry',
+              ...metadata, ...errorMetadata(retryError),
+            });
+            throw retryError;
+          });
+
+          // Report a scheduled retry only after its database write succeeds.
+          logger.warn({
+            event: 'outbox.retry_scheduled', operation, ...metadata,
+            nextAttemptAt: nextAttemptAt.toISOString(), ...errorMetadata(error),
+          });
+          continue;
         }
+
+        // Publication means local hand-off and bookkeeping, not browser acknowledgement.
+        logger.debug({ event: 'outbox.published', ...metadata });
       }
 
       // A full batch may have more eligible events behind it.
@@ -67,6 +99,8 @@ export function createOutboxRelayer(
     // Concurrent callers share this run and request another check for new work.
     if (activeRun) return activeRun;
 
+    // Failed reads/retry writes are logged where their operation is known.
+    // Keep the existing error callback without logging the same failure again here.
     activeRun = relayPending().catch(onError).finally(() => {
       activeRun = null;
       // Include a wake arriving between the last batch and this cleanup.
