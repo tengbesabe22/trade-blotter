@@ -1,0 +1,14 @@
+# Credentials and machine-specific state must never enter the build context.
+.git
+**/.env
+**/.env.*
+**/.cookies*
+.aws
+.codex
+.agents
+**/.DS_Store
+
+# Generate Linux build artifacts inside Docker, not from the host installation.
+**/node_modules
+**/dist
+database/generated

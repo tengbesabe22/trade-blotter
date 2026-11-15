@@ -1,0 +1,4 @@
+api.teng.website {
+	# Caddy flushes text/event-stream responses immediately for SSE.
+	reverse_proxy backend:3000
+}

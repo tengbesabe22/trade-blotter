@@ -88,6 +88,9 @@ async function seed(prisma: PrismaClient): Promise<void> {
     const addedTrades = await insertSeedTradeFixtures(tx, fixtures);
     const summaries = await insertSeedSymbolSummaries(tx);
     return { ...addedTrades, summaries };
+  }, {
+    maxWait: 15_000, // Allow 15 seconds to acquire/start the transaction.
+    timeout: 60_000, // Allow 60 seconds to finish the complete seed.
   });
 
   console.log(
