@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import type { Logger } from 'pino';
 import { createLogger } from './logging/logger';
-import { createRequestLogger } from './logging/request-logger';
+import { createRequestLogger, type RequestLogEnv } from './logging/request-logger';
 import { createLoginRoutes } from './auth/login-routes';
 import type { AuthRepository } from './auth/auth-repository';
 import { createSessionRoutes } from './auth/session-routes';
@@ -25,10 +25,10 @@ export function createApp(
   options: AuthOptions,
   services: AppServices = {},
 ) {
-  const app = new Hono();
-  const broadcaster = services.broadcaster ?? createTradeBroadcaster();
+  const app = new Hono<RequestLogEnv>();
   // The listening server supplies its logger; app-only fixtures stay quiet by default.
   const logger = services.logger ?? createLogger('silent');
+  const broadcaster = services.broadcaster ?? createTradeBroadcaster(logger);
   app.use('*', createRequestLogger(logger));
 
   app.get('/api/health', (c) => c.json({ status: 'ok' }));
@@ -48,7 +48,7 @@ export function createApp(
     services.onTradeChanged,
   ));
   app.route('/api/summaries', createTradeSummaryRoutes(repositories.auth, repositories.trades, options));
-  app.route('/api/events', createTradeStreamRoutes(repositories.auth, options, broadcaster));
+  app.route('/api/events', createTradeStreamRoutes(repositories.auth, options, broadcaster, logger));
 
   app.onError((_error, c) => {
     // Request middleware logs the handled error once, with its request ID.

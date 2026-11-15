@@ -4,11 +4,14 @@ import { routePath } from 'hono/route';
 import type { Logger } from 'pino';
 import { errorMetadata } from './error-metadata';
 
+export type RequestLogEnv = { Variables: { requestId: string } };
+
 const methods = new Set(['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'HEAD', 'OPTIONS', 'TRACE']);
 
-export function createRequestLogger(logger: Logger): MiddlewareHandler {
+export function createRequestLogger(logger: Logger): MiddlewareHandler<RequestLogEnv> {
   return async (c, next) => {
     const requestId = randomUUID();
+    c.set('requestId', requestId);
     const startedAt = performance.now();
     c.header('X-Request-ID', requestId);
 

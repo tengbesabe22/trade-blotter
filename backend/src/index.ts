@@ -38,7 +38,7 @@ const authRepository = createAuthRepository(prisma);
 const tradeRepository = createTradeRepository(prisma);
 
 // SSE broadcaster and outbox relayer are created here so that they can be shared across all requests.
-const broadcaster = createTradeBroadcaster();
+const broadcaster = createTradeBroadcaster(logger);
 const relayer = createOutboxRelayer(createOutboxRepository(prisma), broadcaster.broadcast, { logger });
 
 const app = createApp(

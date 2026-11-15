@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { captureLogs } from './log-fixtures';
 import { createTradeBroadcaster } from '../src/trades/sse/trade-broadcaster';
 import type { TradeChange } from '../src/trades/sse/trade-stream-contract';
 
@@ -63,8 +64,10 @@ test('broadcaster does not replay events broadcast before a subscription opened'
 });
 
 test('a subscriber with 100 queued events is disconnected without blocking a healthy subscriber', async () => {
-  const broadcaster = createTradeBroadcaster();
-  const slow = broadcaster.subscribe().getReader();
+  const logs = captureLogs();
+  const broadcaster = createTradeBroadcaster(logs.logger);
+  const connectionId = 'd197282d-99ca-4260-833a-702f97d1cba7';
+  const slow = broadcaster.subscribe(connectionId).getReader();
   const healthy = broadcaster.subscribe().getReader();
 
   try {
@@ -79,6 +82,15 @@ test('a subscriber with 100 queued events is disconnected without blocking a hea
     await closed;
     await assert.rejects(slow.read(), /Slow SSE client/);
     assert.deepEqual((await healthy.read()).value, nextChange);
+    broadcaster.broadcast(change);
+    assert.deepEqual((await healthy.read()).value, change);
+    const records = logs.records();
+    assert.equal(records.length, 1);
+    assert.equal(records[0]?.event, 'sse.slow_client_dropped');
+    assert.equal(records[0]?.level, 'warn');
+    assert.equal(records[0]?.connectionId, connectionId);
+    assert.equal(records[0]?.queueLimit, 100);
+    assert.equal(logs.output().includes(change.trade.id), false);
   } finally {
     await slow.cancel().catch(() => {});
     await healthy.cancel();

@@ -5,14 +5,16 @@ import { createApp } from '../src/app';
 import { streamReadySchema, tradeChangeSchema, type TradeChange } from '../src/trades/sse/trade-stream-contract';
 import { createTradeBroadcaster } from '../src/trades/sse/trade-broadcaster';
 import { createAuthFixture, origin, user } from './auth-fixtures';
+import { captureLogs } from './log-fixtures';
 
 const startTime = Date.parse('2026-11-13T09:00:00Z');
 const token = 'a'.repeat(43);
 const tokenHash = createHash('sha256').update(token).digest('hex');
 
-async function setup(role: 'TRADER' | 'READ_ONLY' = 'TRADER') {
+async function setup(role: 'TRADER' | 'READ_ONLY' = 'TRADER', logLevel = 'silent') {
   const auth = createAuthFixture();
-  const broadcaster = createTradeBroadcaster();
+  const logs = captureLogs(logLevel);
+  const broadcaster = createTradeBroadcaster(logs.logger);
   auth.users.get('jsmith@example.com')!.role = role;
   let time = startTime + 60_000;
 
@@ -33,10 +35,10 @@ async function setup(role: 'TRADER' | 'READ_ONLY' = 'TRADER') {
       list: async () => { throw new Error('Opening SSE must not load trades.'); },
       create: async () => { throw new Error('Opening SSE must not create trades.'); },
     },
-  }, { origin, secureCookies: false, now: () => new Date(time) }, { broadcaster });
+  }, { origin, secureCookies: false, now: () => new Date(time) }, { broadcaster, logger: logs.logger });
 
   return {
-    auth, app, broadcaster,
+    auth, app, broadcaster, logs,
     setTime: (next: number) => { time = next; },
     request: (authenticated = true, signal?: AbortSignal) => app.request('/api/events', {
       headers: authenticated ? { Cookie: 'blotter_session=' + token } : {},
@@ -46,11 +48,12 @@ async function setup(role: 'TRADER' | 'READ_ONLY' = 'TRADER') {
 }
 
 test('SSE rejects an unauthenticated request before starting a stream', async () => {
-  const h = await setup();
+  const h = await setup('TRADER', 'debug');
   const response = await h.request(false);
 
   assert.equal(response.status, 401);
   assert.equal((await response.json() as { code: string }).code, 'UNAUTHENTICATED');
+  assert.equal(h.logs.records().filter((record) => String(record.event).startsWith('sse.')).length, 0);
 });
 
 for (const role of ['TRADER', 'READ_ONLY'] as const) {
@@ -131,7 +134,7 @@ async function readNext(reader: ReadableStreamDefaultReader<Uint8Array>) {
 
 test('SSE sends comment heartbeats every 15 seconds without extending idle time', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
-  const h = await setup();
+  const h = await setup('TRADER', 'debug');
   const findSession = t.mock.method(h.auth.repository, 'findSession');
   const reader = (await h.request()).body!.getReader();
 
@@ -152,6 +155,8 @@ test('SSE sends comment heartbeats every 15 seconds without extending idle time'
 
     assert.equal(findSession.mock.callCount(), 3);
     assert.equal(h.auth.sessions.get(tokenHash)?.lastSeenAt.getTime(), startTime);
+    assert.deepEqual(h.logs.records().filter((record) => String(record.event).startsWith('sse.'))
+      .map((record) => record.event), ['sse.opened']);
   } finally {
     await reader.cancel();
   }
@@ -160,7 +165,7 @@ test('SSE sends comment heartbeats every 15 seconds without extending idle time'
 for (const reason of ['idle', 'hard-expired', 'revoked'] as const) {
   test(`SSE closes an open stream when the session becomes ${reason}`, async (t) => {
     t.mock.timers.enable({ apis: ['setTimeout'] });
-    const h = await setup();
+    const h = await setup('TRADER', 'debug');
     const reader = (await h.request()).body!.getReader();
 
     try {
@@ -179,6 +184,11 @@ for (const reason of ['idle', 'hard-expired', 'revoked'] as const) {
 
       t.mock.timers.tick(15_000);
       assert.equal((await readNext(reader)).done, true);
+      await settle();
+      const closed = h.logs.records().filter((record) => record.event === 'sse.closed');
+      assert.equal(closed.length, 1);
+      assert.equal(closed[0]?.closeReason, 'session_inactive');
+      assert.equal(h.logs.records().some((record) => record.event === 'sse.failed'), false);
     } finally {
       await reader.cancel();
     }
@@ -206,7 +216,7 @@ test('SSE uses current session activity from other authenticated requests', asyn
 for (const disconnect of ['reader cancellation', 'request abort'] as const) {
   test(`SSE stops session checks after ${disconnect}`, async (t) => {
     t.mock.timers.enable({ apis: ['setTimeout'] });
-    const h = await setup();
+    const h = await setup('TRADER', 'debug');
     const findSession = t.mock.method(h.auth.repository, 'findSession');
     const controller = new AbortController();
     const reader = (await h.request(true, controller.signal)).body!.getReader();
@@ -229,6 +239,10 @@ for (const disconnect of ['reader cancellation', 'request abort'] as const) {
       t.mock.timers.tick(60_000);
       await settle();
       assert.equal(findSession.mock.callCount(), checks);
+      const closed = h.logs.records().filter((record) => record.event === 'sse.closed');
+      assert.equal(closed.length, 1);
+      assert.equal(closed[0]?.closeReason, 'client_disconnected');
+      assert.equal(h.logs.records().some((record) => record.event === 'sse.failed'), false);
     } finally {
       await reader.cancel();
     }
@@ -237,7 +251,7 @@ for (const disconnect of ['reader cancellation', 'request abort'] as const) {
 
 test('SSE closes safely if an ongoing session lookup fails', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
-  const h = await setup();
+  const h = await setup('TRADER', 'debug');
   const reader = (await h.request()).body!.getReader();
 
   try {
@@ -246,13 +260,15 @@ test('SSE closes safely if an ongoing session lookup fails', async (t) => {
     const findSession = t.mock.method(h.auth.repository, 'findSession', async () => {
       throw new Error('Private database details');
     });
-    t.mock.method(console, 'error', () => {});
+    const consoleError = t.mock.method(console, 'error', () => {});
 
     t.mock.timers.tick(15_000);
     assert.equal((await readNext(reader)).done, true);
     t.mock.timers.tick(60_000);
     await settle();
     assert.equal(findSession.mock.callCount(), 1);
+    assertSafeStreamFailure(h.logs);
+    assert.equal(consoleError.mock.callCount(), 0);
   } finally {
     await reader.cancel();
   }
@@ -357,21 +373,24 @@ test('a revoked session cannot receive a trade before its next heartbeat', async
 });
 
 test('a session lookup failure during trade delivery closes the stream safely', async (t) => {
-  const h = await setup();
+  const h = await setup('TRADER', 'debug');
   const reader = (await h.request()).body!.getReader();
   try {
     await reader.read();
     t.mock.method(h.auth.repository, 'findSession', async () => { throw new Error('Private database details'); });
-    t.mock.method(console, 'error', () => {});
+    const consoleError = t.mock.method(console, 'error', () => {});
     h.broadcaster.broadcast(change);
     assert.equal((await readNext(reader)).done, true);
+    await settle();
+    assertSafeStreamFailure(h.logs);
+    assert.equal(consoleError.mock.callCount(), 0);
   } finally {
     await reader.cancel();
   }
 });
 
 test('broadcaster overflow closes SSE even when a trade write is blocked', async () => {
-  const h = await setup();
+  const h = await setup('TRADER', 'debug');
   const reader = (await h.request()).body!.getReader();
   try {
     await reader.read();
@@ -385,6 +404,121 @@ test('broadcaster overflow closes SSE even when a trade write is blocked', async
 
     await readNext(reader); // A frame already buffered in the HTTP response can remain.
     assert.equal((await readNext(reader)).done, true);
+    await settle();
+    const opened = h.logs.records().find((record) => record.event === 'sse.opened');
+    const dropped = h.logs.records().filter((record) => record.event === 'sse.slow_client_dropped');
+    const closed = h.logs.records().filter((record) => record.event === 'sse.closed');
+    assert.equal(dropped.length, 1);
+    assert.equal(dropped[0]?.connectionId, opened?.connectionId);
+    assert.equal(dropped[0]?.queueLimit, 100);
+    assert.equal(closed.length, 1);
+    assert.equal(closed[0]?.closeReason, 'slow_client');
+    assert.equal(h.logs.records().some((record) => record.event === 'sse.failed'), false);
+  } finally {
+    await reader.cancel();
+  }
+});
+
+
+function assertSafeStreamFailure(logs: ReturnType<typeof captureLogs>) {
+  const failures = logs.records().filter((record) => record.event === 'sse.failed');
+  const closed = logs.records().filter((record) => record.event === 'sse.closed');
+  assert.equal(failures.length, 1);
+  assert.equal(failures[0]?.level, 'error');
+  assert.equal(failures[0]?.errorCategory, 'unexpected_error');
+  assert.equal(closed.length, 1);
+  assert.equal(closed[0]?.closeReason, 'stream_error');
+  assert.equal(closed[0]?.connectionId, failures[0]?.connectionId);
+  assert.equal(logs.output().includes('Private database details'), false);
+}
+
+test('SSE logs correlated opening and one closure, with a new connection ID on reconnect', async () => {
+  const h = await setup('TRADER', 'debug');
+  const connections: string[] = [];
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const response = await h.request();
+    const reader = response.body!.getReader();
+    try {
+      const frame = new TextDecoder().decode((await reader.read()).value);
+      const ready = streamReadySchema.parse(JSON.parse(frame.split('\n').find((line) => line.startsWith('data: '))!.slice(6)));
+      await settle();
+      connections.push(ready.connectionId);
+      const opened = h.logs.records().filter((record) => record.event === 'sse.opened' && record.connectionId === ready.connectionId);
+      assert.equal(opened.length, 1);
+      assert.equal(opened[0]?.level, 'info');
+      assert.equal(opened[0]?.requestId, response.headers.get('X-Request-ID'));
+    } finally {
+      await reader.cancel();
+    }
+    await settle();
+    const closed = h.logs.records().filter((record) => record.event === 'sse.closed' && record.connectionId === connections.at(-1));
+    assert.equal(closed.length, 1);
+    assert.equal(closed[0]?.level, 'info');
+    assert.equal(closed[0]?.closeReason, 'client_disconnected');
+    assert.equal(typeof closed[0]?.connectionDurationMs, 'number');
+    assert.ok(Number(closed[0]?.connectionDurationMs) >= 0);
+  }
+  assert.notEqual(connections[0], connections[1]);
+});
+
+for (const level of ['debug', 'info']) {
+  test(`SSE at ${level} records lifecycle and only enables delivery records at debug`, async () => {
+    const h = await setup('TRADER', level);
+    const reader = (await h.request()).body!.getReader();
+    try {
+      await reader.read();
+      h.broadcaster.broadcast(change);
+      const frame = new TextDecoder().decode((await readNext(reader)).value);
+      assert.match(frame, /event: trade.changed/);
+      await settle();
+      const sent = h.logs.records().filter((record) => record.event === 'sse.sent');
+      assert.equal(sent.length, level === 'debug' ? 1 : 0);
+      if (level === 'debug') {
+        assert.equal(sent[0]?.changeId, change.changeId);
+        assert.equal(sent[0]?.connectionId, h.logs.records().find((record) => record.event === 'sse.opened')?.connectionId);
+      }
+    } finally {
+      await reader.cancel();
+    }
+    await settle();
+    for (const value of [token, tokenHash, user.id, user.displayName, change.trade.id,
+      change.summaries[0]!.instrumentId, change.trade.price, change.trade.quantity]) {
+      assert.equal(h.logs.output().includes(value), false);
+    }
+  });
+}
+
+test('SSE handles a failure to register a subscription without exposing an error frame', async (t) => {
+  const h = await setup('TRADER', 'debug');
+  t.mock.method(h.broadcaster, 'subscribe', () => { throw new Error('Private database details'); });
+  const consoleError = t.mock.method(console, 'error', () => {});
+  const reader = (await h.request()).body!.getReader();
+  try {
+    assert.equal((await readNext(reader)).done, true);
+    await settle();
+    assertSafeStreamFailure(h.logs);
+    assert.equal(h.logs.records().some((record) => record.event === 'sse.opened'), false);
+    assert.equal(consoleError.mock.callCount(), 0);
+  } finally {
+    await reader.cancel();
+  }
+});
+
+test('SSE records unexpected subscription failure once and closes without an error frame', async (t) => {
+  const h = await setup('TRADER', 'debug');
+  let subscription!: ReadableStreamDefaultController<TradeChange>;
+  t.mock.method(h.broadcaster, 'subscribe', () => new ReadableStream<TradeChange>({
+    start: (controller) => { subscription = controller; },
+  }));
+  const consoleError = t.mock.method(console, 'error', () => {});
+  const reader = (await h.request()).body!.getReader();
+  try {
+    await reader.read();
+    subscription.error(new Error('Private database details'));
+    assert.equal((await readNext(reader)).done, true);
+    await settle();
+    assertSafeStreamFailure(h.logs);
+    assert.equal(consoleError.mock.callCount(), 0);
   } finally {
     await reader.cancel();
   }

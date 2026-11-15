@@ -42,7 +42,10 @@ Sessions are also checked before each trade event. Neither trade delivery nor
 heartbeats update `lastSeenAt`.
 Disconnecting cancels the pending timer and removes the request abort listener.
 A session lookup failure closes the stream and is logged on the server without
-sending internal error details to the client.
+sending internal error details to the client. Lifecycle logs use the existing
+connection ID plus the HTTP request ID; heartbeat comments are not logged.
+See the [logging guide](backend-logging.md#follow-an-sse-connection) for close reasons,
+slow-client warnings and optional debug delivery records.
 
 The ready payload is defined in
 [trade-stream-contract.ts](../backend/src/trades/sse/trade-stream-contract.ts); the route lives in
@@ -206,9 +209,7 @@ stream.ready. Switching tabs keeps the connection and caches alive. See the
 [position guide](trade-summaries.md#frontend-tabs-and-live-positions). The separate
 stream.ready, GET responses and HTTP mutation responses retain their contracts.
 
-Checks: all 421 backend tests and 287 frontend tests pass, with root typecheck,
-both builds and frontend lint. Focused tests cover captured snapshots, invalid
-payloads, retries, both roles receiving complete SSE frames and browser trade updates.
-The parallel regression run timed out on one existing Amend grid UI test; that file
-and the full frontend rerun both passed without code changes. Persistence/EventSource
-are faked; SSE tests read real Hono response streams. No live database CI dependency.
+Backend checks: all 426 tests pass, including lifecycle correlation, one closure
+per connection, safe failure handling, quiet heartbeats and slow-client overflow.
+The backend typecheck/build pass. Tests use fake persistence and real Hono response
+streams; there is no live database CI dependency.

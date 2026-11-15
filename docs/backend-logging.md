@@ -15,6 +15,11 @@ The default is `info`. Supported values are `trace`, `debug`, `info`, `warn`,
 | `outbox.retry_scheduled` | warn | An event failed and its next retry was saved |
 | `outbox.failed` | error | Reading pending events or saving a retry failed |
 | `outbox.published` | debug | Local broadcast and publication bookkeeping succeeded |
+| `sse.opened` | info | The ready write returned and the stream is still active |
+| `sse.closed` | info | Connection cleanup ran; includes close reason and duration |
+| `sse.failed` | error | An unexpected stream/session/subscription failure occurred |
+| `sse.slow_client_dropped` | warn | A connection exceeded its 100-event queue |
+| `sse.sent` | debug | A trade-event write returned while the stream remained active |
 
 Every record includes UTC `time`, a readable `level` and
 `service: "trade-blotter-api"`. Successful `/api/health` probes are omitted to
@@ -58,6 +63,38 @@ acknowledgement. A crash or failed publication write can cause repeat delivery;
 clients still merge by entity version. No request IDs are persisted in the outbox,
 so request-to-event tracing across restarts is not provided.
 
+## Follow an SSE connection
+
+The `connectionId` is the same ID sent in `stream.ready`. Opening, closing, failure
+and debug send records also include the HTTP handshake's generated `requestId`.
+The broadcaster retains that connection ID with its existing subscription, so an
+overflow warning can be linked without another registry or a user identifier.
+A reconnect gets a new connection ID.
+
+`closeReason` is one of:
+
+- `client_disconnected`: response cancellation or request abort.
+- `session_inactive`: the session is missing or expired; no guess about why.
+- `slow_client`: the broadcaster's queue bound was exceeded.
+- `stream_error`: an unexpected failure; a safe `sse.failed` record accompanies it.
+- `subscription_closed`: the subscription ended normally without a client abort.
+
+There is one closure record per authenticated stream attempt, including attempts
+that end before ready (which have no `sse.opened`). `connectionDurationMs` measures
+from entry to the authenticated stream handler through cleanup using a monotonic
+clock. It is not API latency or commit-to-browser/render time.
+
+At `info`, follow connection lifecycle and failures. At `debug`, `sse.sent` links a
+connection to its `changeId`; use that ID to find outbox records. It means Hono's
+write helper returned with the stream active, not verified socket delivery or
+browser receipt. Heartbeats produce no logs and never renew session idle time.
+
+Unexpected failures are handled inside the stream callback with safe metadata,
+then the stream closes. They do not reach HTTP `app.onError` after setup. We do
+not use Hono's SSE error callback, which can send the raw exception message in an
+error frame. Normal abort cleanup produces no false failure record; overflow gets
+its warning plus closure, without an additional unexpected-error record.
+
 ## Privacy and errors
 
 Call sites allowlist operational metadata. They do not log identities, IPs,
@@ -76,12 +113,15 @@ Log access and retention must be controlled in the deployment configuration.
 - `backend/src/logging/logger.ts`: JSON format, level validation and redaction.
 - `backend/src/logging/request-logger.ts`: request ID, timing, status and safe errors.
 - `backend/src/logging/error-metadata.ts`: shared safe error categories/codes.
+- `backend/src/trades/sse/trade-stream-routes.ts`: lifecycle and debug send records.
+- `backend/src/trades/sse/trade-broadcaster.ts`: slow-client warnings.
 - `backend/src/trades/outbox/outbox-relayer.ts`: publication, retry and failure records;
   standalone fixtures default to silent unless a logger is supplied.
 - `backend/src/app.ts`: installs the middleware before routes. App-only fixtures
   use a silent logger by default; the server injects its configured logger.
 - `backend/src/index.ts`: creates the shared logger and logs startup/close events.
 
-SSE lifecycle logging remains a follow-up slice. Post-header stream errors still
-use the existing streaming helper path. This guide describes L1–L3; it does not
-claim all backend log paths are covered.
+Startup, HTTP, outbox and SSE lifecycle logging are implemented. Tests capture
+real JSON records using fake repositories and real Hono streams; they need no
+running database. Cloud log collection, access controls and retention belong to
+the deployment configuration. Load measurements remain a separate task.
