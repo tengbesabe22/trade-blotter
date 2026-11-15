@@ -21,7 +21,7 @@ test('amend sends PATCH with cookies, a version and only supplied changes, witho
   const [url, options] = fetchMock.mock.calls[0].arguments;
   assert.equal(url, '/api/trades/' + sampleTrade.id);
   assert.equal(options?.method, 'PATCH');
-  assert.equal(options?.credentials, 'same-origin');
+  assert.equal(options?.credentials, 'include');
   assert.equal(new Headers(options?.headers).get('Content-Type'), 'application/json');
   assert.equal(new Headers(options?.headers).get('Idempotency-Key'), null);
   assert.deepEqual(JSON.parse(String(options?.body)), {

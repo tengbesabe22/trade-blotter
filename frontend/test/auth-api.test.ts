@@ -19,7 +19,7 @@ test('login posts unchanged credentials through /api and validates the returned 
   const [url, options] = fetchMock.mock.calls[0].arguments;
   assert.equal(url, '/api/auth/login');
   assert.equal(options?.method, 'POST');
-  assert.equal(options?.credentials, 'same-origin');
+  assert.equal(options?.credentials, 'include');
   assert.equal(new Headers(options?.headers).get('Content-Type'), 'application/json');
   assert.deepEqual(JSON.parse(String(options?.body)), credentials);
 });
@@ -32,7 +32,7 @@ test('me loads the current account using the browser session cookie', async (t) 
   const [url, options] = fetchMock.mock.calls[0].arguments;
   assert.equal(url, '/api/auth/me');
   assert.equal(options?.method ?? 'GET', 'GET');
-  assert.equal(options?.credentials, 'same-origin');
+  assert.equal(options?.credentials, 'include');
 });
 
 test('logout posts with the session cookie and accepts an empty 204 response', async (t) => {
@@ -43,7 +43,7 @@ test('logout posts with the session cookie and accepts an empty 204 response', a
   const [url, options] = fetchMock.mock.calls[0].arguments;
   assert.equal(url, '/api/auth/logout');
   assert.equal(options?.method, 'POST');
-  assert.equal(options?.credentials, 'same-origin');
+  assert.equal(options?.credentials, 'include');
 });
 
 test('HTTP failures preserve the server error code, status, and safe message', async (t) => {

@@ -19,7 +19,7 @@ test('cancel posts the version and normalized reason with cookies and no idempot
   const [url, options] = mock.mock.calls[0].arguments;
   assert.equal(url, '/api/trades/' + sampleTrade.id + '/cancel');
   assert.equal(options?.method, 'POST');
-  assert.equal(options?.credentials, 'same-origin');
+  assert.equal(options?.credentials, 'include');
   assert.equal(new Headers(options?.headers).get('Content-Type'), 'application/json');
   assert.equal(new Headers(options?.headers).get('Idempotency-Key'), null);
   assert.deepEqual(JSON.parse(String(options?.body)), { expectedVersion: 1, reason: 'Duplicate booking.' });

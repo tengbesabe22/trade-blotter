@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { cors } from 'hono/cors';
 import type { Logger } from 'pino';
 import { createLogger } from './logging/logger';
 import { createRequestLogger, type RequestLogEnv } from './logging/request-logger';
@@ -30,6 +31,13 @@ export function createApp(
   const logger = services.logger ?? createLogger('silent');
   const broadcaster = services.broadcaster ?? createTradeBroadcaster(logger);
   app.use('*', createRequestLogger(logger));
+  // Handle browser preflights before authentication; mutations still check trusted Origin.
+  app.use('/api/*', cors({
+    origin: options.origin,
+    credentials: true,
+    allowMethods: ['GET', 'POST', 'PATCH', 'OPTIONS'],
+    allowHeaders: ['Content-Type', 'Idempotency-Key', 'X-Session-Activity'],
+  }));
 
   app.get('/api/health', (c) => c.json({ status: 'ok' }));
 

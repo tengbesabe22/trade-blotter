@@ -17,7 +17,7 @@ test('history sends a cookie-authenticated GET for one trade and forwards the ab
   const [url, options] = fetchMock.mock.calls[0].arguments;
   assert.equal(url, `/api/trades/${sampleTrade.id}/history`);
   assert.equal(options?.method ?? 'GET', 'GET');
-  assert.equal(options?.credentials, 'same-origin');
+  assert.equal(options?.credentials, 'include');
   assert.equal(options?.signal, controller.signal);
   assert.equal(options?.body, undefined);
   assert.equal(new Headers(options?.headers).get('X-Session-Activity'), null);

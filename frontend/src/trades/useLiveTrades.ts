@@ -1,6 +1,7 @@
 import { useEffect, useEffectEvent, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { tradeApi } from '../api/trade-api';
+import { apiUrl } from '../api/api-url';
 import type { Trade, TradeListQuery } from '../api/trade-contract';
 import { streamReadySchema, tradeChangeSchema } from '../api/trade-stream-contract';
 import { usePositionSummaries, positionSummaryQueryKey } from './usePositionSummaries';
@@ -117,7 +118,7 @@ export function useLiveTrades(request: TradeListQuery, savedTrade: Trade | null 
     if (typeof EventSource === 'undefined') return;
 
     // Native browser SSE client, not an event store. It handles transport reconnects.
-    const source = new EventSource('/api/events'); // Same-origin HttpOnly cookies travel automatically.
+    const source = new EventSource(apiUrl('/events'), { withCredentials: true });
     let active = true; // Ignore late callbacks after unmount/sign-out.
     let acceptsTrades = false; // Require a valid ready event before accepting trade messages.
     let generation = 0; // Connection transitions; separate from the received-trade counter.

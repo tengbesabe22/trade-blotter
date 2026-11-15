@@ -29,9 +29,11 @@ class FakeEventSource extends dom.window.EventTarget {
   closed = false;
   readyState = 0;
   readonly url: string;
-  constructor(url: string) {
+  readonly withCredentials: boolean;
+  constructor(url: string, options?: EventSourceInit) {
     super();
     this.url = url;
+    this.withCredentials = options?.withCredentials ?? false;
     FakeEventSource.sources.push(this);
   }
   emit(name: string, data: unknown = {}) {
@@ -84,6 +86,7 @@ function setup(t: TestContext, transport: typeof fetch = async () => Response.js
 
 test('ready starts the snapshot; incoming trades update the Query cache and table without another GET', async (t) => {
   const h = setup(t);
+  assert.equal(h.source.withCredentials, true);
   assert.equal(h.fetchMock.mock.callCount(), 0);
   await act(async () => { h.source.emit('stream.ready', ready); });
   await screen.findByText('AAPL');

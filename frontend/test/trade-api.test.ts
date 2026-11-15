@@ -21,7 +21,7 @@ test('trade listing uses the session cookie and preserves decimal strings and nu
   const [url, options] = fetchMock.mock.calls[0].arguments;
   assert.equal(url, '/api/trades?limit=100&sortBy=tradeDate&sortDirection=desc');
   assert.equal(options?.method ?? 'GET', 'GET');
-  assert.equal(options?.credentials, 'same-origin');
+  assert.equal(options?.credentials, 'include');
   assert.equal(new Headers(options?.headers).get('X-Session-Activity'), null);
   assert.equal(options?.signal, controller.signal);
 });
@@ -97,7 +97,7 @@ test('background trade reads send the activity hint while retaining session cred
   await tradeApi.list(undefined, undefined, 'background');
   const options = fetchMock.mock.calls[0].arguments[1];
   assert.equal(new Headers(options?.headers).get('X-Session-Activity'), 'background');
-  assert.equal(options?.credentials, 'same-origin');
+  assert.equal(options?.credentials, 'include');
 });
 
 

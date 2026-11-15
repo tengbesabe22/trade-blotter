@@ -15,7 +15,7 @@ test('filter options use the session cookie, preserve only the contract and forw
   const [url, options] = mock.mock.calls[0]!.arguments;
   assert.equal(url, '/api/trades/filter-options');
   assert.equal(options?.method ?? 'GET', 'GET');
-  assert.equal(options?.credentials, 'same-origin');
+  assert.equal(options?.credentials, 'include');
   assert.equal(options?.signal, controller.signal);
 });
 

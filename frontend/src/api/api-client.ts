@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { apiUrl } from './api-url';
 
 const apiErrorSchema = z.object({ code: z.string(), message: z.string() });
 
@@ -18,10 +19,10 @@ export class ApiError extends Error {
 }
 
 export async function apiRequest(path: string, options: RequestInit = {}): Promise<Response> {
-  const response = await fetch(`/api${path}`, {
+  const response = await fetch(apiUrl(path), {
     ...options,
-    // Vite proxies /api, so the browser handles HttpOnly cookies on the same origin.
-    credentials: 'same-origin',
+    // Include the API's HttpOnly cookie when the frontend and API have different origins.
+    credentials: 'include',
   });
 
   if (!response.ok) {

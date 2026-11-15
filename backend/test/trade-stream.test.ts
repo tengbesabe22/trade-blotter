@@ -41,7 +41,7 @@ async function setup(role: 'TRADER' | 'READ_ONLY' = 'TRADER', logLevel = 'silent
     auth, app, broadcaster, logs,
     setTime: (next: number) => { time = next; },
     request: (authenticated = true, signal?: AbortSignal) => app.request('/api/events', {
-      headers: authenticated ? { Cookie: 'blotter_session=' + token } : {},
+      headers: authenticated ? { Origin: origin, Cookie: 'blotter_session=' + token } : { Origin: origin },
       signal,
     }),
   };
@@ -68,6 +68,8 @@ for (const role of ['TRADER', 'READ_ONLY'] as const) {
 
     const reader = response.body!.getReader();
     try {
+      assert.equal(response.headers.get('Access-Control-Allow-Origin'), origin);
+      assert.equal(response.headers.get('Access-Control-Allow-Credentials'), 'true');
       const frame = new TextDecoder().decode((await reader.read()).value);
       assert.match(frame, /event: stream.ready/);
       assert.match(frame, /retry: 1000/);

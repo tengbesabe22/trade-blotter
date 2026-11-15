@@ -10,7 +10,7 @@ test('summaries use an unfiltered cookie-authenticated GET and forward the abort
   assert.deepEqual(await tradeApi.summaries(controller.signal), summaryResponse());
   const [url, options] = fetchMock.mock.calls[0]!.arguments as [string, RequestInit];
   assert.equal(url, '/api/summaries');
-  assert.equal(options.credentials, 'same-origin');
+  assert.equal(options.credentials, 'include');
   assert.equal(options.signal, controller.signal);
   assert.equal(options.body, undefined);
   assert.equal(new Headers(options.headers).get('X-Session-Activity'), null);

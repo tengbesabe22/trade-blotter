@@ -156,7 +156,8 @@ export function createTradeStreamRoutes(
       }
     });
 
-    response.headers.set('Cache-Control', 'no-store');
+    // Keep Hono's header state consistent when outer middleware adds CORS headers.
+    c.header('Cache-Control', 'no-store');
     return response;
   });
 

@@ -67,7 +67,7 @@ test('create submits decimal strings, UTC time and an idempotency key, then repo
   const [url, options] = h.mock.mock.calls[0]!.arguments;
   assert.equal(url, '/api/trades');
   assert.equal(options?.method, 'POST');
-  assert.equal(options?.credentials, 'same-origin');
+  assert.equal(options?.credentials, 'include');
   assert.ok(new Headers(options?.headers).get('Idempotency-Key'));
   assert.deepEqual(JSON.parse(String(options?.body)), {
     symbol: 'AAPL', side: 'BUY', quantity: '5000.000001', price: '227.4501',
