@@ -1,4 +1,7 @@
 import { Hono } from 'hono';
+import type { Logger } from 'pino';
+import { createLogger } from './logging/logger';
+import { createRequestLogger } from './logging/request-logger';
 import { createLoginRoutes } from './auth/login-routes';
 import type { AuthRepository } from './auth/auth-repository';
 import { createSessionRoutes } from './auth/session-routes';
@@ -11,6 +14,7 @@ import { createTradeBroadcaster, type TradeBroadcaster } from './trades/sse/trad
 
 export type AppRepositories = { auth: AuthRepository; trades: TradeRepository };
 type AppServices = {
+  logger?: Logger;
   onTradeChanged?: () => void;
   broadcaster?: TradeBroadcaster;
 };
@@ -23,6 +27,9 @@ export function createApp(
 ) {
   const app = new Hono();
   const broadcaster = services.broadcaster ?? createTradeBroadcaster();
+  // The listening server supplies its logger; app-only fixtures stay quiet by default.
+  const logger = services.logger ?? createLogger('silent');
+  app.use('*', createRequestLogger(logger));
 
   app.get('/api/health', (c) => c.json({ status: 'ok' }));
 
@@ -43,9 +50,8 @@ export function createApp(
   app.route('/api/summaries', createTradeSummaryRoutes(repositories.auth, repositories.trades, options));
   app.route('/api/events', createTradeStreamRoutes(repositories.auth, options, broadcaster));
 
-  app.onError((error, c) => {
-    console.error('Request failed:', error.name);
-
+  app.onError((_error, c) => {
+    // Request middleware logs the handled error once, with its request ID.
     return c.json({ code: 'INTERNAL_ERROR', message: 'An unexpected error occurred.' }, 500);
   });
 

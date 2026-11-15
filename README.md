@@ -12,7 +12,7 @@ Position Summary has its own tab with desk-wide Bought/Sold/Net quantities and
 Long/Short/Flat direction. It shares live updates with the Trades tab and preserves
 filters, pagination and drafts when switching views.
 
-**Next:** documentation cleanup, backend logging, p95/p99 load checks and deployment.
+**Next:** outbox/SSE lifecycle logging, documentation cleanup, p95/p99 load checks and deployment.
 P&L is an optional follow-up.
 The frontend supports login, session restoration, logout, and a read-only trade
 grid with server sorting, Previous/Next pagination, manual refresh, and loading/empty/error states.
@@ -73,6 +73,8 @@ pnpm dev
 
 The API runs at `http://localhost:3000`.
 Check `GET /api/health` for `{"status":"ok"}`.
+The API writes JSON startup/request logs to stdout. See the
+[logging guide](docs/backend-logging.md) for `LOG_LEVEL`, request IDs and privacy controls.
 
 Start the frontend in another terminal:
 
