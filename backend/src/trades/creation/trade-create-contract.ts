@@ -36,12 +36,15 @@ export const createTradeResponseSchema = z.strictObject({
 
 export type CreateTradeResponse = z.infer<typeof createTradeResponseSchema>;
 
-// The route can reuse this schema to validate the Idempotency-Key header.
+// UI: crypto.randomUUID(), reused for retries of the same submission.
+// The header accepts 1–120 ASCII letters/digits and . _ : - (no spaces).
 export const idempotencyKeySchema = z.string()
   .min(1)
   .max(120)
   .regex(/^[A-Za-z0-9._:-]+$/, 'Idempotency key contains unsupported characters.');
 
+// Internal route-to-repository command: clients send only the trade request body.
+// The route adds the session user ID, header key and server-computed fingerprint.
 export const createTradeCommandSchema = z.strictObject({
   userId: z.uuid(),
   idempotencyKey: idempotencyKeySchema,

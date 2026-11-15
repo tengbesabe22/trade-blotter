@@ -16,7 +16,9 @@ function decimalStringSchema(label: string, scale: number, maximum: string) {
     .transform((decimal) => decimal.toFixed(scale));
 }
 
+// Trade.quantity is Decimal(20,6); 1 billion shares is the API cap, below storage capacity.
 export const quantitySchema = decimalStringSchema('Quantity', 6, '1000000000');
+// Trade.price is Decimal(18,4); the 1 million cap also matches its SQL CHECK.
 export const priceSchema = decimalStringSchema('Price', 4, '1000000');
 
 export const tradeDateSchema = z.iso.datetime({ offset: true })
@@ -31,7 +33,7 @@ export const tradeResponseSchema = z.strictObject({
   symbol: z.string().min(1).max(12)
     .refine((value) => value === value.trim().toUpperCase(), 'Symbol must be normalized.'),
   side: z.enum(['BUY', 'SELL']),
-  // Responses must already have the required scale before shared validation runs.
+  // Responses must already have the required scale before shared validation runs = done upstream.
   quantity: z.string()
     .regex(/^\d+\.\d{6}$/, 'Quantity must have six decimal places.')
     .pipe(quantitySchema),
@@ -42,6 +44,7 @@ export const tradeResponseSchema = z.strictObject({
   ownerId: z.uuid(),
   book: z.string().max(64).nullable(),
   counterparty: z.string().max(120).nullable(),
+  // 3 - ms precision = 3 decimal places
   tradeDate: z.iso.datetime({ precision: 3 }),
   status: z.enum(['ACTIVE', 'CANCELLED']),
   version: z.number().int().positive(),
@@ -52,6 +55,7 @@ export const tradeResponseSchema = z.strictObject({
 export type TradeResponse = z.infer<typeof tradeResponseSchema>;
 
 export const tradeListResponseSchema = z.strictObject({
+  // Response-format marker: clients reject unsupported formats; separate from trade.version.
   schemaVersion: z.literal(1),
   generatedAt: z.iso.datetime({ precision: 3 }),
   trades: z.array(tradeResponseSchema).max(200),

@@ -61,7 +61,7 @@ or user records in local storage.
 | Cookie | HttpOnly, SameSite=Lax, Path=/api; Secure in production |
 | Token storage | Fresh random token per login; only its SHA-256 hash is stored |
 
-Timing constants are in [session-config.ts](../backend/src/auth/session-config.ts).
+Timing constants: [maximum duration](../backend/src/auth/session-config.ts) and [idle timeout](../backend/src/auth/session-config.ts).
 Invalid/expired sessions clear the cookie and require login again.
 Requests marked `X-Session-Activity: background` validate the session without
 updating `lastSeenAt`. Automatic trade snapshots/recovery use this hint; deliberate

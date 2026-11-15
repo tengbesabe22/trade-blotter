@@ -48,8 +48,8 @@ See the [logging guide](backend-logging.md#follow-an-sse-connection) for close r
 slow-client warnings and optional debug delivery records.
 
 The ready payload is defined in
-[trade-stream-contract.ts](../backend/src/trades/sse/trade-stream-contract.ts); the route lives in
-[trade-stream-routes.ts](../backend/src/trades/sse/trade-stream-routes.ts). It uses Hono's streaming helper and removes the request
+[streamReadySchema](../backend/src/trades/sse/trade-stream-contract.ts); the route lives in
+[createTradeStreamRoutes](../backend/src/trades/sse/trade-stream-routes.ts). It uses Hono's streaming helper and removes the request
 abort listener when the connection ends. Responses use no-store and disable
 proxy buffering through X-Accel-Buffering.
 
@@ -113,12 +113,12 @@ Run `tradeEvents.close()` when finished.
 
 ## Browser cache behavior
 
-[useLiveTrades.ts](../frontend/src/trades/useLiveTrades.ts) keeps one EventSource
+[useLiveTrades](../frontend/src/trades/useLiveTrades.ts) keeps one EventSource
 connection per signed-in trade page, including across sorting/pagination changes.
 It waits for ready before the first page fetch and re-fetches the current page on
 reconnection. Incoming events are validated using the browser event contract.
 
-[trade-merge.ts](../frontend/src/trades/trade-merge.ts) merges by trade
+[mergeLiveTradePage](../frontend/src/trades/trade-merge.ts) merges by trade
 ID/version. The default first page inserts new rows in execution-time/ID descending
 order and remains bounded by its selected limit. Other pages/sorts update known
 rows, preserving navigation. The unseen-trade notice appears only on older pages;
