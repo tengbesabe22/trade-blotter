@@ -79,6 +79,8 @@ model Trade {
 
   @@index([userId])
   @@index([instrumentId])
+  // Supports execution-time ordering and its cursor tie-breaker; scans backward for newest first.
+  @@index([tradeDate, id])
 }
 
 /// Append-only enforcement and snapshot checks live in the SQL migration.

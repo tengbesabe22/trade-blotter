@@ -11,14 +11,16 @@ const methods = new Set(['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'HEAD', 'OPTIO
 export function createRequestLogger(logger: Logger): MiddlewareHandler<RequestLogEnv> {
   return async (c, next) => {
     const requestId = randomUUID();
+
+    // Set the request ID in the context so route handlers can log it too.
     c.set('requestId', requestId);
     const startedAt = performance.now();
     c.header('X-Request-ID', requestId);
 
+    // Execute the next middleware/handler in the chain, then log the response after it completes.
     await next();
 
-    // Use the registered endpoint, even if auth rejected it before its handler ran.
-    // Unknown URLs and query/resource values must not enter logs.
+    // Log the response after the request has been handled, including any errors that occurred.
     const matched = routePath(c, -1);
     const route = matched && !matched.includes('*') ? matched : 'unmatched';
     const status = c.res.status;

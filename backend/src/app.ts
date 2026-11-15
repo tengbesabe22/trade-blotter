@@ -34,6 +34,7 @@ export function createApp(
   app.get('/api/health', (c) => c.json({ status: 'ok' }));
 
   app.use('/api/auth/*', async (c, next) => {
+    // Tells browsers and proxies not to cache any auth responses
     c.header('Cache-Control', 'no-store');
 
     await next();
