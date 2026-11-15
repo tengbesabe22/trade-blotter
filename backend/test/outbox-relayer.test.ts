@@ -1,9 +1,13 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import test, { afterEach } from 'node:test';
+import { setImmediate } from 'node:timers/promises';
 import { createOutboxRelayer } from '../src/trades/outbox/outbox-relayer';
 import type { OutboxRepository, PendingTradeEvent } from '../src/trades/outbox/outbox-repository';
 import { tradeResponseSchema } from '../src/trades/trade-contract';
 import type { TradeChange } from '../src/trades/sse/trade-stream-contract';
+
+const cleanup: (() => void)[] = [];
+afterEach(() => { cleanup.splice(0).forEach((stop) => stop()); });
 
 const startTime = Date.parse('2026-11-13T09:00:00.000Z');
 
@@ -41,6 +45,10 @@ function setup(events: PendingTradeEvent[] = [makeEvent()]) {
     listPending: async (now, limit) => [...pending.values()]
       .filter((event) => (nextAttempts.get(event.id) ?? startTime) <= now.getTime())
       .slice(0, limit),
+    findNextAttemptAt: async () => {
+      const times = [...pending.keys()].map((id) => nextAttempts.get(id) ?? startTime);
+      return times.length ? new Date(Math.min(...times)) : null;
+    },
     markPublished: async (id) => { published.push(id); pending.delete(id); },
     scheduleRetry: async (id, nextAttemptAt, errorName) => {
       retries.push({ id, nextAttemptAt, errorName });
@@ -53,7 +61,8 @@ function setup(events: PendingTradeEvent[] = [makeEvent()]) {
   const relayer = createOutboxRelayer(repository, (change) => broadcaster.broadcast(change), {
     now: () => new Date(time), onError: (error) => { errors.push(error); },
   });
-  return { relayer, repository, broadcaster, pending, delivered, published, retries, errors,
+  cleanup.push(relayer.stop);
+  return { nextAttempts, relayer, repository, broadcaster, pending, delivered, published, retries, errors,
     advance: (ms: number) => { time += ms; } };
 }
 
@@ -317,4 +326,110 @@ test('records without captured summaries are retried without fabricating a snaps
     assert.deepEqual(h.delivered.map((change) => change.changeId), [makeEvent(2).id]);
     assert.equal(h.retries[0]?.id, created.id);
   }
+});
+
+
+test('a failed delivery retries automatically, then stays idle after publication', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const h = setup();
+  const reads = t.mock.method(h.repository, 'listPending');
+  const broadcast = t.mock.method(h.broadcaster, 'broadcast', () => { throw new Error('Unavailable'); });
+  await h.relayer.wake();
+  broadcast.mock.restore();
+
+  h.advance(999);
+  t.mock.timers.tick(999);
+  await setImmediate();
+  assert.equal(h.published.length, 0);
+
+  h.advance(1);
+  t.mock.timers.tick(1);
+  await setImmediate();
+  assert.deepEqual(h.published, [makeEvent().id]);
+
+  const readCount = reads.mock.callCount();
+  h.advance(60_000);
+  t.mock.timers.tick(60_000);
+  await setImmediate();
+  assert.equal(reads.mock.callCount(), readCount);
+});
+
+test('startup restores the earliest saved retry and then the later one', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const first = makeEvent();
+  const second = makeEvent(2);
+  const h = setup([first, second]);
+  h.nextAttempts.set(first.id, startTime + 1000);
+  h.nextAttempts.set(second.id, startTime + 2000);
+  await h.relayer.wake();
+  assert.deepEqual(h.published, []);
+
+  // An unrelated wake must keep the existing deadline, not postpone it.
+  h.advance(500);
+  t.mock.timers.tick(500);
+  await h.relayer.wake();
+  h.advance(500);
+  t.mock.timers.tick(500);
+  await setImmediate();
+  assert.deepEqual(h.published, [first.id]);
+
+  h.advance(1000);
+  t.mock.timers.tick(1000);
+  await setImmediate();
+  assert.deepEqual(h.published, [first.id, second.id]);
+});
+
+for (const operation of ['listPending', 'findNextAttemptAt', 'scheduleRetry'] as const) {
+  test(`a failed ${operation} gets a one-shot retry without another trade`, async (t) => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const h = setup();
+    if (operation === 'scheduleRetry') {
+      t.mock.method(h.broadcaster, 'broadcast', () => { throw new Error('Unavailable'); });
+    }
+    const failure = t.mock.method(h.repository, operation, async () => { throw new Error('Unavailable'); });
+    await h.relayer.wake();
+    assert.equal(h.errors.length, 1);
+    failure.mock.restore();
+
+    h.advance(1000);
+    t.mock.timers.tick(1000);
+    await setImmediate();
+    if (operation === 'scheduleRetry') {
+      assert.equal(h.retries.length, 1);
+    } else {
+      assert.equal(h.pending.size, 0);
+    }
+  });
+}
+
+test('stopping clears a pending retry and prevents further reads', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const h = setup();
+  const reads = t.mock.method(h.repository, 'listPending');
+  t.mock.method(h.broadcaster, 'broadcast', () => { throw new Error('Unavailable'); });
+  await h.relayer.wake();
+  h.relayer.stop();
+
+  h.advance(60_000);
+  t.mock.timers.tick(60_000);
+  await h.relayer.wake();
+  await setImmediate();
+  assert.equal(reads.mock.callCount(), 1);
+});
+
+test('stopping during a read does not rearm a retry after that read fails', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const h = setup();
+  let rejectRead!: (error: Error) => void;
+  const reads = t.mock.method(h.repository, 'listPending', () => new Promise<PendingTradeEvent[]>((_, reject) => {
+    rejectRead = reject;
+  }));
+  const running = h.relayer.wake();
+  h.relayer.stop();
+  rejectRead(new Error('Unavailable'));
+  await running;
+
+  t.mock.timers.tick(60_000);
+  await setImmediate();
+  assert.equal(reads.mock.callCount(), 1);
 });

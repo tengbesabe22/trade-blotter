@@ -55,8 +55,8 @@ const server = serve({ fetch: app.fetch, port: Number(process.env.PORT ?? 3000) 
   logger.info({ event: 'server.started', port: info.port });
 });
 
-const stopRecovery = startOutboxRecovery(relayer.wake);
+startOutboxRecovery(relayer.wake);
 server.once('close', () => {
-  stopRecovery();
+  relayer.stop();
   logger.info({ event: 'server.closed' });
 });

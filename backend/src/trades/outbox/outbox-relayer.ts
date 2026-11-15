@@ -32,9 +32,19 @@ export function createOutboxRelayer(
   const onError = options.onError ?? (() => {});
   let activeRun: Promise<void> | null = null;
   let wakeRequested = false;
+  let stopped = false;
+  let retryTimer: ReturnType<typeof setTimeout> | undefined;
+
+  function scheduleWake(delayMs: number) {
+    if (stopped) return;
+
+    clearTimeout(retryTimer);
+    retryTimer = setTimeout(() => { void wake(); }, Math.max(0, delayMs));
+    retryTimer.unref(); // A pending retry must not keep a stopped server alive.
+  }
 
   async function relayPending() {
-    while (wakeRequested) {
+    while (wakeRequested && !stopped) {
       wakeRequested = false;
       const events = await repository.listPending(now(), BATCH_SIZE).catch((error: unknown) => {
         logger.error({ event: 'outbox.failed', operation: 'list_pending', ...errorMetadata(error) });
@@ -42,6 +52,8 @@ export function createOutboxRelayer(
       });
 
       for (const event of events) {
+        if (stopped) return;
+
         // Capture the attempt before scheduleRetry increments the saved retry count.
         const metadata = { changeId: event.id, type: event.type, attempt: event.retries + 1 };
         let operation = 'validate_payload';
@@ -92,22 +104,44 @@ export function createOutboxRelayer(
       // A full batch may have more eligible events behind it.
       if (events.length === BATCH_SIZE) wakeRequested = true;
     }
+
+    if (stopped) return;
+
+    // One timer for the earliest saved deadline; no pending work means no timer.
+    const nextAttemptAt = await repository.findNextAttemptAt().catch((error: unknown) => {
+      logger.error({ event: 'outbox.failed', operation: 'find_next_attempt', ...errorMetadata(error) });
+      throw error;
+    });
+    if (nextAttemptAt) scheduleWake(nextAttemptAt.getTime() - now().getTime());
   }
 
   function wake(): Promise<void> {
+    if (stopped) return Promise.resolve();
+
+    // Foreground work can arrive before a retry is due; recompute its deadline afterward.
+    clearTimeout(retryTimer);
+    retryTimer = undefined;
     wakeRequested = true;
     // Concurrent callers share this run and request another check for new work.
     if (activeRun) return activeRun;
 
-    // Failed reads/retry writes are logged where their operation is known.
-    // Keep the existing error callback without logging the same failure again here.
-    activeRun = relayPending().catch(onError).finally(() => {
+    activeRun = relayPending().catch((error: unknown) => {
+      // Database failures may prevent saving/reading a deadline. Retry this failed run once.
+      scheduleWake(RETRY_BASE_DELAY_MS);
+      onError(error); // The failed operation already logged the error.
+    }).finally(() => {
       activeRun = null;
       // Include a wake arriving between the last batch and this cleanup.
-      if (wakeRequested) void wake();
+      if (wakeRequested && !stopped) void wake();
     });
     return activeRun;
   }
 
-  return { wake };
+  function stop() {
+    stopped = true;
+    wakeRequested = false;
+    clearTimeout(retryTimer);
+  }
+
+  return { wake, stop };
 }

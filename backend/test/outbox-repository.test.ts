@@ -15,18 +15,24 @@ const event: PendingTradeEvent = {
 
 function setup() {
   const reads: Prisma.OutboxEventFindManyArgs[] = [];
+  const nextReads: Prisma.OutboxEventFindFirstArgs[] = [];
+  let nextAttemptAt: Date | null = event.createdAt;
   const writes: Prisma.OutboxEventUpdateArgs[] = [];
   const fake = { outboxEvent: {
     findMany: async (query: Prisma.OutboxEventFindManyArgs) => {
       reads.push(query);
       return [event];
     },
+    findFirst: async (query: Prisma.OutboxEventFindFirstArgs) => {
+      nextReads.push(query);
+      return nextAttemptAt ? { nextAttemptAt } : null;
+    },
     update: async (query: Prisma.OutboxEventUpdateArgs) => { writes.push(query); },
   } };
 
   // Keep the structural fake cast at the Prisma delegate boundary.
   const database = fake as unknown as Parameters<typeof createOutboxRepository>[0];
-  return { repository: createOutboxRepository(database), reads, writes };
+  return { repository: createOutboxRepository(database), reads, writes, nextReads, clearPending: () => { nextAttemptAt = null; } };
 }
 
 test('listPending requests only due pending creation, amendment and cancellation events in a bounded, deterministic order', async () => {
@@ -63,4 +69,18 @@ test('scheduleRetry increments retries and defers the next attempt without marki
   assert.deepEqual(h.writes[0]?.data, {
     retries: { increment: 1 }, nextAttemptAt, lastError: 'DispatchError',
   });
+});
+
+
+test('findNextAttemptAt restores the earliest pending deadline, including future retries', async () => {
+  const h = setup();
+  assert.deepEqual(await h.repository.findNextAttemptAt(), event.createdAt);
+  assert.deepEqual(h.nextReads[0], {
+    where: { type: { in: ['TRADE_CREATED', 'TRADE_AMENDED', 'TRADE_CANCELLED'] }, status: 'PENDING' },
+    orderBy: [{ nextAttemptAt: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
+    select: { nextAttemptAt: true },
+  });
+
+  h.clearPending();
+  assert.equal(await h.repository.findNextAttemptAt(), null);
 });

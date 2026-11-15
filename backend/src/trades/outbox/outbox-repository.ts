@@ -12,6 +12,7 @@ export type PendingTradeEvent = {
 
 export type OutboxRepository = {
   listPending: (now: Date, limit: number) => Promise<PendingTradeEvent[]>;
+  findNextAttemptAt: () => Promise<Date | null>;
   markPublished: (id: string, now: Date) => Promise<void>;
   scheduleRetry: (id: string, nextAttemptAt: Date, errorName: string) => Promise<void>;
 };
@@ -34,6 +35,19 @@ export function createOutboxRepository(
         payload: true, retries: true, createdAt: true,
       },
     }),
+
+    // Include future retries so startup can restore their timer after a restart.
+    findNextAttemptAt: async () => {
+      const event = await database.outboxEvent.findFirst({
+        where: {
+          type: { in: ['TRADE_CREATED', 'TRADE_AMENDED', 'TRADE_CANCELLED'] },
+          status: 'PENDING',
+        },
+        orderBy: [{ nextAttemptAt: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
+        select: { nextAttemptAt: true },
+      });
+      return event?.nextAttemptAt ?? null;
+    },
 
     markPublished: async (id, now) => {
       await database.outboxEvent.update({
