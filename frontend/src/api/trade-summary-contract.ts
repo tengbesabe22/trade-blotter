@@ -20,3 +20,13 @@ export const symbolSummarySchema = z.strictObject({
   updatedAt: z.iso.datetime({ precision: 3 }),
 });
 export type SymbolSummary = z.infer<typeof symbolSummarySchema>;
+
+export const tradeSummaryResponseSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  generatedAt: z.iso.datetime({ precision: 3 }),
+  summaries: z.array(symbolSummarySchema),
+}).refine((response) => {
+  const ids = response.summaries.map((summary) => summary.instrumentId.toLowerCase());
+  return new Set(ids).size === ids.length;
+}, 'Each instrument must appear only once.');
+export type TradeSummaryResponse = z.infer<typeof tradeSummaryResponseSchema>;

@@ -5,7 +5,8 @@ The local database has been reset and reseeded. Create, amend and cancel now upd
 summaries transactionally. The read response contract, repository, mapper and GET endpoint are implemented/tested.
 Create, amend and cancel capture their resulting summary snapshots in the outbox;
 the relayer sends one event shape containing trade and summaries, with no format
-version. Trade and summary revisions remain independent. Summary cache integration and the docked UI remain planned.
+version. Trade and summary revisions remain independent. The frontend now loads and
+merges summaries in a separate Position Summary tab beside Trades.
 
 ## Scope
 
@@ -63,7 +64,7 @@ checks reject negative totals/version and numeric NaN. Decimal column limits rej
 overflow. The schema-only migration creates no data and takes no explicit Trade
 table lock. It is applied to the local development database.
 
-The accepted UI is a docked Position Summary under the blotter. It shows current
+The UI uses separate Trades and Position Summary tabs. Position Summary shows current
 positions across all available dates, across all traders/books, with zero assumed
 opening positions. Trade-list date filters affect executions only. P&L will have
 its own day selection later; neither it nor historical position queries are added
@@ -239,16 +240,51 @@ tests, root typecheck and backend build pass. A separate read-only check of the 
 database found all 10 instrument summaries present and all four totals equal to the
 ACTIVE trade aggregates. This verification changed no data and is not a CI dependency.
 
-## Next slice
+## Frontend tabs and live positions
 
-[Summary events](trade-stream-api.md#summary-events) now carry the saved snapshots.
-Next load the summary baseline, merge snapshots independently by instrument/version,
-and render the docked panel. All mutations maintain totals from a correct starting
-state; earlier drift is not repaired automatically.
+Trades is the default tab. Position Summary loads its complete desk baseline on
+first opening, after stream.ready or through HTTP fallback if SSE is unavailable.
+After first use, both views remain mounted: switching retains filters, pagination,
+create/amend drafts and loaded positions without another connection or summary read.
+Both account roles can view positions. Arrow keys and Home/End navigate the tabs.
 
-P&L is deferred as an optional follow-up. Finish current Position Summary first,
-then prioritize documentation cleanup, backend logging, p95/p99 load measurements
-and deployment. Do not add valuation marks or P&L implementation to these slices.
+The position view shows Symbol / Bought / Sold / Net quantity / Direction. Positive
+net is Long, negative is Short, and zero is Flat under the zero-opening assumption.
+Quantity formatting groups string digits and trims trailing fractional zeros; it
+never converts financial values to Number. Zero-valued symbol rows remain visible.
+
+usePositionSummaries owns the ['position-summaries'] query and one latest event row
+per instrument. That buffer protects events received before the tab opens or while
+an older HTTP response is pending. It does not retain event history and is released
+with the signed-in workspace. trade-summary-merge.ts selects the greatest independent
+summary version per instrument. Duplicate/older snapshots do not change totals.
+Summary processing happens before the trade version guard, so an older trade record
+cannot suppress a newer summary carried with it.
+
+stream.ready cancels old requests and refreshes both loaded datasets. Recovery GETs
+use X-Session-Activity: background; first opening and deliberate Refresh count as
+user activity. Ordinary summary events update the cache directly without a GET.
+Blotter filters do not redefine the summary scope. HTTP mutation responses remain
+{trade}; summary updates arrive through the shared SSE event.
+
+Loading, empty, synchronising, disconnected, failed-read and expired-session states
+are explicit. Failed refreshes keep labelled last data and a retry action. Events
+remain buffered during a failed baseline/recovery; the next successful snapshot
+merges them before clearing the warning. HTTP fallback supports manual refresh.
+Expired sessions hide the data and offer sign-in.
+
+Checks: 311 frontend tests pass, including 24 new API, merge and UI cases. Frontend
+build/typechecking and lint pass. Tests use mocked fetch/EventSource and real React/
+TanStack Query; the existing live trade suite also remains green. In two local
+browser clients, a synthetic AAPL BUY of 1, amendment to 2, and cancellation moved
+the receiving net from 9,112.625 to 9,113.625, then 9,114.625, and back to 9,112.625
+without receiver refresh. The test trade remains CANCELLED with its audit history.
+
+## Next work
+
+Position Summary is implemented. P&L stays deferred. Prioritize documentation cleanup,
+backend logging, p95/p99 load measurements and deployment. Do not add valuation marks
+or P&L implementation to this feature.
 
 References: [Decimal.js independent constructors](https://mikemcl.github.io/decimal.js/#Dclone),
 [IBKR daily trade log](https://www.ibkrguides.com/traderworkstation/trade-log.htm),

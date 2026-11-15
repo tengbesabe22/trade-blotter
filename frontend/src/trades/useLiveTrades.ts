@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { tradeApi } from '../api/trade-api';
 import type { Trade, TradeListQuery } from '../api/trade-contract';
 import { streamReadySchema, tradeChangeSchema } from '../api/trade-stream-contract';
+import { usePositionSummaries, positionSummaryQueryKey } from './usePositionSummaries';
 import { isLiveFirstPage, mergeLiveTradePage, mergeNewestTrades, type LiveTradePage } from './trade-merge';
 
 const PAGE_RECONCILIATION_DELAY_MS = 100;
@@ -16,7 +17,7 @@ function eventData(event: Event): unknown {
 }
 
 // One SSE connection feeds the active Query cache; HTTP supplies initial/reconnect snapshots.
-export function useLiveTrades(request: TradeListQuery, savedTrade: Trade | null = null) {
+export function useLiveTrades(request: TradeListQuery, savedTrade: Trade | null = null, positionsRequested = false) {
   const queryClient = useQueryClient();
   const queryKey = ['trades', request] as const;
   // Retain at most 200 newest trades, even after caching: an older HTTP response
@@ -28,6 +29,9 @@ export function useLiveTrades(request: TradeListQuery, savedTrade: Trade | null 
   const userRequestPending = useRef(false);
   const [streamStatus, setStreamStatus] = useState<StreamStatus>(() =>
     typeof EventSource === 'undefined' ? 'unavailable' : 'connecting');
+  const positions = usePositionSummaries(positionsRequested &&
+    (streamStatus === 'connected' || streamStatus === 'unavailable'));
+  const { receiveSummaries } = positions;
 
   const query = useQuery<LiveTradePage>({
     queryKey,
@@ -136,12 +140,16 @@ export function useLiveTrades(request: TradeListQuery, savedTrade: Trade | null 
       acceptsTrades = true;
       const currentGeneration = ++generation;
       // A new connection needs a fresh snapshot. Keep event-applied rows while cancelling.
-      await queryClient.cancelQueries({ queryKey: ['trades'] }, { revert: false });
+      await Promise.all([
+        queryClient.cancelQueries({ queryKey: ['trades'] }, { revert: false }),
+        queryClient.cancelQueries({ queryKey: positionSummaryQueryKey }, { revert: false }),
+      ]);
       // A newer connection/error may have arrived while cancellation was pending.
       if (!active || generation !== currentGeneration) return;
 
       setStreamStatus('connected');
       void queryClient.invalidateQueries({ queryKey: ['trades'] });
+      void queryClient.invalidateQueries({ queryKey: positionSummaryQueryKey });
     });
     source.addEventListener('trade.changed', (event) => {
       if (!active || !acceptsTrades) return;
@@ -150,6 +158,9 @@ export function useLiveTrades(request: TradeListQuery, savedTrade: Trade | null 
         invalidStream();
         return;
       }
+      // Summary revisions are independent; process them even if receiveTrade
+      // rejects this trade as an older or duplicate record.
+      receiveSummaries(change.data.summaries);
       receiveTrade(change.data.trade);
     });
     source.addEventListener('error', () => {
@@ -167,11 +178,11 @@ export function useLiveTrades(request: TradeListQuery, savedTrade: Trade | null 
       source.close();
     };
     // receiveTrade is an Effect Event and is intentionally excluded from dependencies.
-  }, [queryClient]);
+  }, [queryClient, receiveSummaries]);
 
   function markUserRequest() {
     userRequestPending.current = true;
   }
 
-  return { query, streamStatus, markUserRequest };
+  return { query, streamStatus, markUserRequest, positions };
 }

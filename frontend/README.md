@@ -1,9 +1,10 @@
 # Frontend
 
 React + TypeScript + Vite, with Tailwind CSS and Oxlint.
-Login, logout, session restoration, a trade grid and a trader-only create form are implemented.
-AG Grid Community displays one bounded page; TanStack Query manages the current request/cache.
-Filter controls, amend/cancel forms and live updates are next.
+Login/session restoration, trade CRUD, filtering, live updates and per-trade history
+are implemented. Trades and Position Summary use separate tabs. AG Grid displays
+one bounded trade page; the position view shows current desk-wide totals by symbol.
+TanStack Query manages both caches through one shared SSE connection.
 
 ## Commands
 
@@ -151,3 +152,28 @@ submission and retries the same key/body. Pending attempts are held in component
 memory only. See the [create API guide](../docs/trade-create-api.md) for limits and
 error behavior. Component tests cover request payloads, duplicate prevention,
 network/server/invalid-response retries, role visibility and page refresh after success.
+
+
+## Position Summary
+
+Open Position Summary to load GET /api/summaries once. The complete list covers all
+traders/books/dates, independently of blotter filters. Subsequent SSE snapshots replace
+each instrument only when its summary version advances; no per-event GET is needed.
+Reconnect reloads the baseline passively and merges buffered newer events. Switching
+tabs preserves trade filters, pagination and form drafts. Both roles can read it.
+
+| File | Responsibility |
+| --- | --- |
+| src/api/trade-summary-contract.ts | Exact decimal rows and complete response validation |
+| src/api/trade-api.ts | summaries GET with cookies, cancellation and activity policy |
+| src/trades/usePositionSummaries.ts | Baseline query, per-instrument event buffer, refresh and recovery |
+| src/trades/trade-summary-merge.ts | Independent version guard and stable symbol ordering |
+| src/trades/PositionSummaryPage.tsx | Exact quantities, Long/Short/Flat and view states |
+| src/trades/TradesPage.tsx | Tabs and preserved views |
+| src/trades/useLiveTrades.ts | One SSE connection feeding both caches |
+
+The buffer stores one newest event per instrument until workspace unmount; keeping
+it after caching protects against older HTTP responses. Failed snapshots retain
+labelled last data and buffer events until a successful retry. The position view
+supports loading/empty/error/session expiry, disconnected status and manual refresh.
+Quantities are formatted as strings, preserving precision. P&L remains deferred.

@@ -165,7 +165,7 @@ The inline amendment form and cancellation panel supply successful mutation
 responses to the same version guard and buffer. It does not wait for SSE or refetch after saving; duplicate
 SSE delivery is harmless and older in-flight snapshots cannot undo the change.
 Ordering/membership reconciliation is implemented for the current bounded page.
-Summary snapshots now reach the browser; summary cache/UI integration remains pending.
+Summary snapshots update the independent position cache and Position Summary tab.
 Older pages keep the unseen-trade notice until a
 user refreshes or changes the query, even after passive reconciliation.
 
@@ -199,9 +199,12 @@ with fabricated totals. A read-only local check found zero pending records lacki
 snapshots. No rows were changed and no compatibility migration was needed.
 
 The broadcaster/SSE route use the same authenticated connection. The browser validates
-this one shape and immediately merges its trade. Summary baseline loading, merging
-by instrument/version and the docked panel remain next. The separate stream.ready,
-GET responses and HTTP mutation responses retain their existing contracts.
+this one shape and merges the trade and summary independently. The Position Summary
+tab uses a complete baseline and merges each instrument by summary version, including
+updates received before/during the GET. Loaded summaries refresh passively after
+stream.ready. Switching tabs keeps the connection and caches alive. See the
+[position guide](trade-summaries.md#frontend-tabs-and-live-positions). The separate
+stream.ready, GET responses and HTTP mutation responses retain their contracts.
 
 Checks: all 421 backend tests and 287 frontend tests pass, with root typecheck,
 both builds and frontend lint. Focused tests cover captured snapshots, invalid

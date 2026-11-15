@@ -13,10 +13,27 @@ import {
 import { createTradeRequestSchema, createTradeResponseSchema, type CreateTradeRequest } from './trade-create-contract';
 import { tradeFilterOptionsSchema, type TradeFilterOptions } from './trade-filter-options-contract';
 import { tradeHistoryIdSchema, tradeHistoryResponseSchema, type TradeHistoryResponse } from './trade-history-contract';
+import { tradeSummaryResponseSchema, type TradeSummaryResponse } from './trade-summary-contract';
 import { ApiError, apiRequest } from './api-client';
 import { defaultTradeListQuery, tradeListQuerySchema, tradeListResponseSchema, type TradeListQuery, type TradeListResponse } from './trade-contract';
 
 export const tradeApi = {
+  summaries: async (
+    signal?: AbortSignal,
+    activity: 'user' | 'background' = 'user',
+  ): Promise<TradeSummaryResponse> => {
+    const response = await apiRequest('/summaries', {
+      signal,
+      headers: activity === 'background' ? { 'X-Session-Activity': 'background' } : undefined,
+    });
+    const body: unknown = await response.json().catch(() => null);
+    const validation = tradeSummaryResponseSchema.safeParse(body);
+    if (!validation.success) {
+      throw new ApiError(response.status, 'INVALID_RESPONSE', 'The server returned unexpected positions.');
+    }
+    return validation.data;
+  },
+
   history: async (
     tradeId: string,
     signal?: AbortSignal,

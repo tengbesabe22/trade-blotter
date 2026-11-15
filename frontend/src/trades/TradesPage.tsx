@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useRef, useState, type ReactNode } from 'react';
+import { lazy, Suspense, useCallback, useRef, useState, type ReactNode, type KeyboardEvent } from 'react';
 import type { CurrentUser } from '../api/auth-contract';
 import { AmendTradeForm } from './AmendTradeForm';
 import { CancelTradePanel } from './CancelTradePanel';
@@ -8,6 +8,7 @@ import { defaultTradeListQuery, type TradeListQuery, type Trade } from '../api/t
 import { TradeListControls } from './TradeListControls';
 import { TradePagination } from './TradePagination';
 import { TradeHistoryPage } from './TradeHistoryPage';
+import { PositionSummaryPage } from './PositionSummaryPage';
 
 // Load the grid only when there are rows to display, keeping login lightweight.
 const TradeTable = lazy(async () => {
@@ -32,6 +33,10 @@ type TradesPageProps = {
 };
 
 export function TradesPage({ user, onSessionExpired, tradePanel, createSubmissionLocked = false }: TradesPageProps) {
+  const [activeTab, setActiveTab] = useState<'trades' | 'positions'>('trades');
+  const [positionsRequested, setPositionsRequested] = useState(false);
+  const tradesTab = useRef<HTMLButtonElement>(null);
+  const positionsTab = useRef<HTMLButtonElement>(null);
   const [selectedHistory, setSelectedHistory] = useState<Trade | null>(null);
   const [selectedAction, setSelectedAction] = useState<SelectedTradeAction | null>(null);
   const [savedTrade, setSavedTrade] = useState<Trade | null>(null);
@@ -50,10 +55,30 @@ export function TradesPage({ user, onSessionExpired, tradePanel, createSubmissio
   const emptyDescription = hasFilters
     ? 'Try changing your filters.'
     : 'Trades will appear here after they are recorded. Use Refresh trades to check again.';
-  const { query, streamStatus, markUserRequest } = useLiveTrades(request, savedTrade);
+  const { query, streamStatus, markUserRequest, positions } = useLiveTrades(request, savedTrade, positionsRequested);
 
   const trades = query.data?.trades;
-  const sessionExpired = query.error instanceof ApiError && query.error.status === 401;
+  const sessionExpired = (query.error instanceof ApiError && query.error.status === 401) ||
+    (positions.query.error instanceof ApiError && positions.query.error.status === 401);
+
+  function selectTab(tab: 'trades' | 'positions') {
+    if (tab === 'positions' && !positionsRequested) {
+      positions.markUserRequest();
+      setPositionsRequested(true);
+    }
+    setActiveTab(tab);
+  }
+
+  function navigateTabs(event: KeyboardEvent<HTMLDivElement>) {
+    let next: 'trades' | 'positions';
+    if (event.key === 'Home') next = 'trades';
+    else if (event.key === 'End') next = 'positions';
+    else if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') next = activeTab === 'trades' ? 'positions' : 'trades';
+    else return;
+    event.preventDefault();
+    selectTab(next);
+    (next === 'trades' ? tradesTab : positionsTab).current?.focus();
+  }
 
   const openAmendment = useCallback((trade: Trade) => {
     if (createSubmissionLocked) return;
@@ -115,7 +140,7 @@ export function TradesPage({ user, onSessionExpired, tradePanel, createSubmissio
   }
 
   const blotter = (
-    <div className="grid min-h-[calc(100svh-6rem)] grid-cols-[minmax(0,1fr)_24rem] items-stretch gap-4">
+    <div className="grid min-h-[calc(100svh-9rem)] grid-cols-[minmax(0,1fr)_24rem] items-stretch gap-4">
       <section aria-labelledby="trades-title" className="flex min-w-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 p-4 sm:px-6">
           <div>
@@ -253,8 +278,31 @@ export function TradesPage({ user, onSessionExpired, tradePanel, createSubmissio
 
   return (
     <>
-      {/* Keep the blotter and SSE mounted to preserve filters, page, widths and drafts. */}
-      <div hidden={selectedHistory !== null}>{blotter}</div>
+      {!selectedHistory && (
+        <div role="tablist" aria-label="Workspace views" onKeyDown={navigateTabs}
+          className="mb-3 flex w-fit gap-1 rounded-lg border border-slate-200 bg-white p-1 shadow-sm">
+          <button ref={tradesTab} type="button" role="tab" id="trades-tab" aria-controls="trades-panel"
+            aria-selected={activeTab === 'trades'} tabIndex={activeTab === 'trades' ? 0 : -1} onClick={() => selectTab('trades')}
+            className={'rounded-md px-4 py-2 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700 ' +
+              (activeTab === 'trades' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100')}>
+            Trades
+          </button>
+          <button ref={positionsTab} type="button" role="tab" id="positions-tab" aria-controls="positions-panel"
+            aria-selected={activeTab === 'positions'} tabIndex={activeTab === 'positions' ? 0 : -1} onClick={() => selectTab('positions')}
+            className={'rounded-md px-4 py-2 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700 ' +
+              (activeTab === 'positions' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100')}>
+            Position Summary
+          </button>
+        </div>
+      )}
+      {/* Both views and the shared SSE stay mounted to preserve filters, drafts and live state. */}
+      <div id="trades-panel" role="tabpanel" aria-labelledby="trades-tab" hidden={selectedHistory !== null || activeTab !== 'trades'}>
+        {blotter}
+      </div>
+      <div id="positions-panel" role="tabpanel" aria-labelledby="positions-tab" hidden={selectedHistory !== null || activeTab !== 'positions'}>
+        {positionsRequested && <PositionSummaryPage query={positions.query} connectionMessage={streamMessages[streamStatus]}
+          sessionExpired={sessionExpired} onRefresh={positions.refresh} onSessionExpired={onSessionExpired} />}
+      </div>
       {selectedHistory && (
         <TradeHistoryPage trade={selectedHistory} onBack={closeHistory} onSessionExpired={onSessionExpired} />
       )}
