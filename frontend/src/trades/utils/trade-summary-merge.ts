@@ -1,4 +1,4 @@
-import type { SymbolSummary } from '../api/contracts/trades/trade-summary-contract';
+import type { SymbolSummary } from '../../api/contracts/trades/trade-summary-contract';
 
 // Snapshots are absolute: keep the newest revision per instrument, never add totals.
 export function mergePositionSummaries(current: SymbolSummary[], incoming: SymbolSummary[]): SymbolSummary[] {

@@ -174,6 +174,7 @@ See [Deployment](docs/deployment.md) for configuration and commands.
 | Guide | Read for |
 | --- | --- |
 | [Technical Design](docs/technical-design.md) | Architecture, authentication, schema, API contracts and trade flows. |
+| [Frontend Overview](docs/frontend.md) | Screen structure, state ownership, data flow and recovery. |
 | [Real-time Updates](docs/realtime.md) | Event delivery, frontend merging and reconnect recovery. |
 | [Decisions and Scaling](docs/decisions.md) | Alternatives, accepted limits and the production path. |
 | [Deployment](docs/deployment.md) | Hosting services, configuration, Caddy and deployment commands. |

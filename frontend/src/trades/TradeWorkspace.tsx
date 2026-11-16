@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { CurrentUser } from '../api/contracts/auth/auth-contract';
-import { CreateTradeForm } from './CreateTradeForm';
-import { TradesPage } from './TradesPage';
+import { CreateTradeForm } from './components/CreateTradeForm';
+import { TradesPage } from './pages/TradesPage';
 
 type TradeWorkspaceProps = {
   user: CurrentUser;

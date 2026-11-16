@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, type SubmitEvent } from 'react';
-import { ApiError } from '../api/api-client';
-import { amendTradeConflictSchema, amendTradeRequestSchema, type AmendTradeRequest } from '../api/contracts/trades/trade-amend-contract';
-import { tradeApi } from '../api/trades/trade-api';
-import type { Trade } from '../api/contracts/trades/trade-contract';
+import { ApiError } from '../../api/api-client';
+import { amendTradeConflictSchema, amendTradeRequestSchema, type AmendTradeRequest } from '../../api/contracts/trades/trade-amend-contract';
+import { tradeApi } from '../../api/trades/trade-api';
+import type { Trade } from '../../api/contracts/trades/trade-contract';
 
 type AmendTradeFormProps = {
   trade: Trade;

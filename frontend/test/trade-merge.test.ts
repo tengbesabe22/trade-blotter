@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { defaultTradeListQuery } from '../src/api/contracts/trades/trade-contract';
-import { mergeLiveTradePage, mergeNewestTrades } from '../src/trades/trade-merge';
+import { mergeLiveTradePage, mergeNewestTrades } from '../src/trades/utils/trade-merge';
 import { sampleTrade, tradePage } from './trade-fixtures';
 
 const newer = {

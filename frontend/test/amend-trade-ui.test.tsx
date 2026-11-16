@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import test, { after, afterEach, type TestContext } from 'node:test';
 import { JSDOM } from 'jsdom';
-import { AmendTradeForm } from '../src/trades/AmendTradeForm';
+import { AmendTradeForm } from '../src/trades/components/AmendTradeForm';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { TradesPage } from '../src/trades/TradesPage';
-import type { LiveTradePage } from '../src/trades/trade-merge';
+import { TradesPage } from '../src/trades/pages/TradesPage';
+import type { LiveTradePage } from '../src/trades/utils/trade-merge';
 import type { Trade } from '../src/api/contracts/trades/trade-contract';
 import { signedInTrader, sampleTrade, cancelledTrade, tradePage, tradeOptions } from './trade-fixtures';
 

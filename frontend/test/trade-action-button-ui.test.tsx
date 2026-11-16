@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test, { after, afterEach } from 'node:test';
 import { JSDOM } from 'jsdom';
-import { TradeActionButton } from '../src/trades/TradeActionButton';
+import { TradeActionButton } from '../src/trades/components/TradeActionButton';
 
 const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'http://localhost:5173' });
 Object.defineProperties(globalThis, {

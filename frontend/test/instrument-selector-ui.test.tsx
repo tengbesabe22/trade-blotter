@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test, { after, afterEach } from 'node:test';
 import { useState } from 'react';
 import { JSDOM } from 'jsdom';
-import { InstrumentSelector } from '../src/trades/InstrumentSelector';
+import { InstrumentSelector } from '../src/trades/components/InstrumentSelector';
 
 const instruments = [
   { symbol: 'AAPL', name: 'Apple Inc.' },

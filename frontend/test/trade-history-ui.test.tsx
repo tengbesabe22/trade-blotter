@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import test, { after, afterEach, type TestContext } from 'node:test';
 import { JSDOM } from 'jsdom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { TradeHistoryPage } from '../src/trades/TradeHistoryPage';
-import { TradesPage } from '../src/trades/TradesPage';
+import { TradeHistoryPage } from '../src/trades/pages/TradeHistoryPage';
+import { TradesPage } from '../src/trades/pages/TradesPage';
 import { sampleTrade, cancelledTrade, signedInTrader, tradePage, tradeOptions } from './trade-fixtures';
 import { sampleHistory } from './trade-history-fixtures';
 

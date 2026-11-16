@@ -1,11 +1,11 @@
 import { useEffect, useEffectEvent, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { tradeApi } from '../api/trades/trade-api';
-import { apiUrl } from '../api/api-url';
-import type { Trade, TradeListQuery } from '../api/contracts/trades/trade-contract';
-import { streamReadySchema, tradeChangeSchema } from '../api/contracts/trades/trade-stream-contract';
+import { tradeApi } from '../../api/trades/trade-api';
+import { apiUrl } from '../../api/api-url';
+import type { Trade, TradeListQuery } from '../../api/contracts/trades/trade-contract';
+import { streamReadySchema, tradeChangeSchema } from '../../api/contracts/trades/trade-stream-contract';
 import { usePositionSummaries, positionSummaryQueryKey } from './usePositionSummaries';
-import { isLiveFirstPage, mergeLiveTradePage, mergeNewestTrades, type LiveTradePage } from './trade-merge';
+import { isLiveFirstPage, mergeLiveTradePage, mergeNewestTrades, type LiveTradePage } from '../utils/trade-merge';
 
 const PAGE_RECONCILIATION_DELAY_MS = 100;
 
@@ -21,15 +21,19 @@ function eventData(event: Event): unknown {
 export function useLiveTrades(request: TradeListQuery, savedTrade: Trade | null = null, positionsRequested = false) {
   const queryClient = useQueryClient();
   const queryKey = ['trades', request] as const;
+
   // Retain at most 200 newest trades, even after caching: an older HTTP response
   // can still arrive later. mergeNewestTrades evicts excess rows; unmount releases the buffer.
   const buffered = useRef<Trade[]>([]);
+
   // Counts accepted updates, not duplicate messages, schema versions or trade versions.
   const receivedTradeCount = useRef(0);
+
   // Automatic fetches stay passive; a deliberate action marks only the next fetch.
   const userRequestPending = useRef(false);
   const [streamStatus, setStreamStatus] = useState<StreamStatus>(() =>
     typeof EventSource === 'undefined' ? 'unavailable' : 'connecting');
+
   const positions = usePositionSummaries(positionsRequested &&
     (streamStatus === 'connected' || streamStatus === 'unavailable'));
   const { receiveSummaries } = positions;

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { mergePositionSummaries } from '../src/trades/trade-summary-merge';
+import { mergePositionSummaries } from '../src/trades/utils/trade-summary-merge';
 import { sampleSummary, shortSummary, flatSummary } from './trade-summary-fixtures';
 
 test('summaries merge by instrument and appear in symbol order', () => {

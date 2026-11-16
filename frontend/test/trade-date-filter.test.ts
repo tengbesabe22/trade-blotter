@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { tradeDateFilterSchema } from '../src/trades/trade-date-filter';
+import { tradeDateFilterSchema } from '../src/trades/utils/trade-date-filter';
 
 for (const [through, upperBound] of [
   ['2026-11-14', '2026-11-15T00:00:00.000Z'],

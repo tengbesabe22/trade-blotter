@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
-import type { TradeFilterOptions } from '../api/contracts/trades/trade-filter-options-contract';
+import type { TradeFilterOptions } from '../../api/contracts/trades/trade-filter-options-contract';
 
 type InstrumentSelectorProps = {
   instruments: TradeFilterOptions['instruments'];

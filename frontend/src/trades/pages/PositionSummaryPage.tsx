@@ -1,5 +1,5 @@
 import type { UseQueryResult } from '@tanstack/react-query';
-import type { SymbolSummary } from '../api/contracts/trades/trade-summary-contract';
+import type { SymbolSummary } from '../../api/contracts/trades/trade-summary-contract';
 
 // Format the string digits directly: converting large quantities to Number loses precision.
 function quantity(value: string): string {

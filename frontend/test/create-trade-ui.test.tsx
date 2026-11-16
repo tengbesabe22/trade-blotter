@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test, { after, afterEach, type TestContext } from 'node:test';
 import { JSDOM } from 'jsdom';
-import { CreateTradeForm } from '../src/trades/CreateTradeForm';
+import { CreateTradeForm } from '../src/trades/components/CreateTradeForm';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { sampleTrade, tradeOptions } from './trade-fixtures';
 

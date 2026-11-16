@@ -4,7 +4,7 @@ import { JSDOM } from 'jsdom';
 import type { PropsWithChildren } from 'react';
 import { QueryClient, QueryClientProvider, focusManager, onlineManager } from '@tanstack/react-query';
 import { ApiError } from '../src/api/api-client';
-import { useTradeOptions } from '../src/trades/useTradeOptions';
+import { useTradeOptions } from '../src/trades/hooks/useTradeOptions';
 import { tradeOptions } from './trade-fixtures';
 
 const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'http://localhost:5173' });

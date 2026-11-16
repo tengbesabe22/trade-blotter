@@ -1,9 +1,9 @@
 import { useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { ApiError } from '../api/api-client';
-import { tradeApi } from '../api/trades/trade-api';
-import type { Trade } from '../api/contracts/trades/trade-contract';
-import type { TradeHistoryChange } from '../api/contracts/trades/trade-history-contract';
+import { ApiError } from '../../api/api-client';
+import { tradeApi } from '../../api/trades/trade-api';
+import type { Trade } from '../../api/contracts/trades/trade-contract';
+import type { TradeHistoryChange } from '../../api/contracts/trades/trade-history-contract';
 
 const fieldLabels = {
   side: 'Side', quantity: 'Quantity', price: 'Price (USD)', book: 'Book',

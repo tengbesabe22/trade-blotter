@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState, type SubmitEvent } from 'react';
-import { ApiError } from '../api/api-client';
-import { tradeApi } from '../api/trades/trade-api';
-import { createTradeRequestSchema, type CreateTradeRequest } from '../api/contracts/trades/trade-create-contract';
-import type { Trade } from '../api/contracts/trades/trade-contract';
+import { ApiError } from '../../api/api-client';
+import { tradeApi } from '../../api/trades/trade-api';
+import { createTradeRequestSchema, type CreateTradeRequest } from '../../api/contracts/trades/trade-create-contract';
+import type { Trade } from '../../api/contracts/trades/trade-contract';
 import { InstrumentSelector } from './InstrumentSelector';
-import { useTradeOptions } from './useTradeOptions';
+import { useTradeOptions } from '../hooks/useTradeOptions';
 
 type CreateTradeFormProps = {
   onCreated: (trade: Trade) => void;

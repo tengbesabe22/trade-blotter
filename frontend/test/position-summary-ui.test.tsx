@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test, { after, afterEach, type TestContext } from 'node:test';
 import { JSDOM } from 'jsdom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { TradesPage } from '../src/trades/TradesPage';
+import { TradesPage } from '../src/trades/pages/TradesPage';
 import { TradeWorkspace } from '../src/trades/TradeWorkspace';
 import type { SymbolSummary } from '../src/api/contracts/trades/trade-summary-contract';
 import { signedInTrader, sampleTrade, tradePage, tradeOptions } from './trade-fixtures';

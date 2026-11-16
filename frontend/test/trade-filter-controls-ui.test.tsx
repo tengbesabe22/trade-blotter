@@ -3,8 +3,8 @@ import test, { after, afterEach, type TestContext } from 'node:test';
 import { useState } from 'react';
 import { JSDOM } from 'jsdom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { TradeListControls } from '../src/trades/TradeListControls';
-import { CreateTradeForm } from '../src/trades/CreateTradeForm';
+import { TradeListControls } from '../src/trades/components/TradeListControls';
+import { CreateTradeForm } from '../src/trades/components/CreateTradeForm';
 import { defaultTradeListQuery, type TradeListQuery } from '../src/api/contracts/trades/trade-contract';
 import { tradeOptions } from './trade-fixtures';
 
