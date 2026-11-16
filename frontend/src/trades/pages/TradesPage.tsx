@@ -11,6 +11,7 @@ import { TradeHistoryPage } from './TradeHistoryPage';
 import { PositionSummaryPage } from './PositionSummaryPage';
 import { WorkspaceTabs, type WorkspaceTab } from '../components/WorkspaceTabs';
 import { TradeListHeader } from '../components/TradeListHeader';
+import { LiveConnectionStatus } from '../components/LiveConnectionStatus';
 
 // Load the grid only when there are rows to display, keeping login lightweight.
 const TradeTable = lazy(async () => {
@@ -151,9 +152,10 @@ export function TradesPage({ user, onSessionExpired, tradePanel, createSubmissio
           <>
             {success && <p role="status" className="mx-4 mb-4 text-sm text-emerald-800 sm:mx-6">{success}</p>}
             <p aria-live="polite" className="px-4 pb-3 text-sm text-slate-600 sm:px-6">
-              {streamStatus === 'connected' && query.isFetching
-                ? 'Synchronising live updates…'
-                : streamMessages[streamStatus]}
+              <LiveConnectionStatus connected={streamStatus === 'connected'}
+                message={streamStatus === 'connected' && query.isFetching
+                  ? 'Synchronising live updates…'
+                  : streamMessages[streamStatus]} />
             </p>
             {!isFirstPage && query.data?.hasNewTrades && (
               <p role="status" className="mx-4 mb-4 rounded-lg bg-blue-50 p-3 text-sm text-blue-900 sm:mx-6">
@@ -258,6 +260,7 @@ export function TradesPage({ user, onSessionExpired, tradePanel, createSubmissio
       </div>
       <div id="positions-panel" role="tabpanel" aria-labelledby="positions-tab" hidden={selectedHistory !== null || activeTab !== 'positions'}>
         {positionsRequested && <PositionSummaryPage query={positions.query} connectionMessage={streamMessages[streamStatus]}
+          streamConnected={streamStatus === 'connected'}
           sessionExpired={sessionExpired} onRefresh={positions.refresh} onSessionExpired={onSessionExpired} />}
       </div>
       {selectedHistory && (

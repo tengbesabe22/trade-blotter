@@ -1,5 +1,6 @@
 import type { UseQueryResult } from '@tanstack/react-query';
 import type { SymbolSummary } from '../../api/contracts/trades/trade-summary-contract';
+import { LiveConnectionStatus } from '../components/LiveConnectionStatus';
 
 // Format the string digits directly: converting large quantities to Number loses precision.
 function quantity(value: string): string {
@@ -19,12 +20,13 @@ const directionStyles = { Long: 'text-emerald-800', Short: 'text-red-800', Flat:
 type PositionSummaryPageProps = {
   query: UseQueryResult<SymbolSummary[], Error>;
   connectionMessage: string;
+  streamConnected: boolean;
   sessionExpired: boolean;
   onRefresh: () => void;
   onSessionExpired: () => void;
 };
 
-export function PositionSummaryPage({ query, connectionMessage, sessionExpired, onRefresh, onSessionExpired }: PositionSummaryPageProps) {
+export function PositionSummaryPage({ query, connectionMessage, streamConnected, sessionExpired, onRefresh, onSessionExpired }: PositionSummaryPageProps) {
   return (
     <section aria-labelledby="positions-title" className="min-h-[calc(100svh-9rem)] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 p-4 sm:px-6">
@@ -51,7 +53,8 @@ export function PositionSummaryPage({ query, connectionMessage, sessionExpired, 
       ) : (
         <>
           <p aria-live="polite" className="px-4 py-3 text-sm text-slate-600 sm:px-6">
-            {query.isFetching && query.data ? 'Synchronising positions…' : connectionMessage}
+            <LiveConnectionStatus connected={streamConnected}
+              message={query.isFetching && query.data ? 'Synchronising positions…' : connectionMessage} />
           </p>
           {query.isError && (
             <p role="alert" className="mx-4 mb-4 rounded-lg bg-red-50 p-4 text-sm text-red-800 sm:mx-6">

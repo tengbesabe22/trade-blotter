@@ -51,9 +51,7 @@ function App() {
       : 'flex min-h-svh items-center justify-center px-4 py-6 sm:px-6 sm:py-10'}>
       <div className={`w-full ${session.status === 'signed-in' ? '' : 'max-w-sm'}`}>
         <header className={'flex items-center gap-3 ' + (session.status === 'signed-in' ? 'mb-3' : 'mb-7')}>
-          <span aria-hidden="true" className="flex size-10 items-center justify-center rounded-lg bg-slate-900 text-sm font-bold text-white">
-            TB
-          </span>
+          <img src="/favicon.svg" alt="" width={40} height={40} className="size-10 shrink-0" />
           <div>
             <p className="text-base font-semibold tracking-tight text-slate-950">Trade Blotter</p>
             <p className="text-xs text-slate-500">Equities workspace</p>

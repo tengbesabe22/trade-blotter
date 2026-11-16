@@ -4,6 +4,7 @@ import { createRef, useState } from 'react';
 import { JSDOM } from 'jsdom';
 import { WorkspaceTabs, type WorkspaceTab } from '../../src/trades/components/WorkspaceTabs';
 import { TradeListHeader } from '../../src/trades/components/TradeListHeader';
+import { LiveConnectionStatus } from '../../src/trades/components/LiveConnectionStatus';
 
 const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'http://localhost:5173' });
 Object.defineProperties(globalThis, {
@@ -98,4 +99,15 @@ test('the header keeps its loading context and hides refresh when the session ex
   view.rerender(<TradeListHeader {...props} tradeCount={100} sessionExpired />);
   assert.ok(screen.getByText('USD equities · All traders'));
   assert.equal(screen.queryByRole('button', { name: /Refresh/ }), null);
+});
+
+
+test('the live connection indicator appears only while connected and keeps its text readable', () => {
+  const view = render(<LiveConnectionStatus connected message="Live updates connected" />);
+  const status = screen.getByText('Live updates connected');
+  assert.ok(status.querySelector('[aria-hidden="true"]'));
+
+  view.rerender(<LiveConnectionStatus connected={false} message="Reconnecting…" />);
+  assert.ok(screen.getByText('Reconnecting…'));
+  assert.equal(view.container.querySelector('[aria-hidden="true"]'), null);
 });
