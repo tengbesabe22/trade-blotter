@@ -80,10 +80,26 @@ test('/me returns safe account fields and records authenticated activity', async
   assert.equal(h.sessions.get(h.tokenHash)!.lastSeenAt.getTime(), h.options.now().getTime());
 });
 
-test('idle sessions expire at exactly five minutes and cannot be revived', async () => {
+test('background reads remain valid after five minutes until the fifteen-minute deadline', async () => {
   const h = await setup();
   const before = h.sessions.get(h.tokenHash)!.lastSeenAt.getTime();
+  const background = { headers: { 'X-Session-Activity': 'background' } };
+
   h.advance(5 * minute);
+  assert.equal((await h.request('/api/trades', background)).status, 200);
+
+  h.advance(10 * minute - 1);
+  assert.equal((await h.request('/api/trades', background)).status, 200);
+  assert.equal(h.sessions.get(h.tokenHash)!.lastSeenAt.getTime(), before);
+
+  h.advance(1);
+  assert.equal((await h.request('/api/trades', background)).status, 401);
+});
+
+test('idle sessions expire at exactly fifteen minutes and cannot be revived', async () => {
+  const h = await setup();
+  const before = h.sessions.get(h.tokenHash)!.lastSeenAt.getTime();
+  h.advance(15 * minute);
 
   for (let i = 0; i < 2; i += 1) {
     const response = await h.request();
@@ -98,11 +114,11 @@ test('idle sessions expire at exactly five minutes and cannot be revived', async
 test('activity before the idle deadline renews idle time without changing the hard expiry', async () => {
   const h = await setup();
   const expiresAt = h.sessions.get(h.tokenHash)!.expiresAt.getTime();
-  h.advance(5 * minute - 1);
+  h.advance(15 * minute - 1);
 
   assert.equal((await h.request()).status, 200);
 
-  h.advance(5 * minute);
+  h.advance(15 * minute);
 
   assert.equal((await h.request()).status, 401);
   assert.equal(h.sessions.get(h.tokenHash)!.expiresAt.getTime(), expiresAt);
@@ -273,7 +289,7 @@ test('background/stream validation does not renew idle time', async () => {
   assert.equal((await app.request('/stream-check', { headers: { Cookie: h.cookie } })).status, 200);
   assert.equal(h.sessions.get(h.tokenHash)!.lastSeenAt.getTime(), before);
 
-  h.advance(4 * minute);
+  h.advance(14 * minute);
 
   assert.equal((await app.request('/stream-check', { headers: { Cookie: h.cookie } })).status, 401);
 });
@@ -323,7 +339,7 @@ test('background trade snapshots validate the session without extending idle exp
 
   h.advance(minute);
   assert.equal((await h.request('/api/trades', background)).status, 200);
-  h.advance(3 * minute);
+  h.advance(13 * minute);
   assert.equal((await h.request('/api/trades', background)).status, 200);
   assert.equal(h.sessions.get(h.tokenHash)!.lastSeenAt.getTime(), original);
 
@@ -351,7 +367,7 @@ test('the background hint cannot bypass missing, revoked or expired sessions', a
     const headers = new Headers({ 'X-Session-Activity': 'background' });
     if (reason === 'missing') headers.set('Cookie', '');
     if (reason === 'revoked') h.sessions.clear();
-    if (reason === 'idle') h.advance(5 * minute);
+    if (reason === 'idle') h.advance(15 * minute);
     if (reason === 'maximum') {
       h.advance(8 * hour);
       h.sessions.get(h.tokenHash)!.lastSeenAt = h.options.now(); // Isolate hard expiry.

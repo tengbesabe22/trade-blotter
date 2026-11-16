@@ -108,7 +108,7 @@ for (const reason of ['idle', 'hard-expired', 'revoked'] as const) {
     if (reason === 'revoked') {
       h.auth.sessions.clear();
     } else {
-      const time = startTime + (reason === 'idle' ? 5 * 60_000 : 8 * 60 * 60_000);
+      const time = startTime + (reason === 'idle' ? 15 * 60_000 : 8 * 60 * 60_000);
       h.setTime(time);
       if (reason === 'hard-expired') {
         // Keep idle time valid so this case specifically exercises the hard expiry.
@@ -177,7 +177,7 @@ for (const reason of ['idle', 'hard-expired', 'revoked'] as const) {
       if (reason === 'revoked') {
         await h.auth.repository.deleteSession(tokenHash);
       } else {
-        const time = startTime + (reason === 'idle' ? 5 * 60_000 : 8 * 60 * 60_000);
+        const time = startTime + (reason === 'idle' ? 15 * 60_000 : 8 * 60 * 60_000);
         h.setTime(time);
         if (reason === 'hard-expired') {
           h.auth.sessions.get(tokenHash)!.lastSeenAt = new Date(time - 60_000);
@@ -205,8 +205,8 @@ test('SSE uses current session activity from other authenticated requests', asyn
   try {
     await reader.read();
     await settle();
-    h.setTime(startTime + 5 * 60_000);
-    await h.auth.repository.touchSession(tokenHash, new Date(startTime + 4 * 60_000));
+    h.setTime(startTime + 15 * 60_000);
+    await h.auth.repository.touchSession(tokenHash, new Date(startTime + 14 * 60_000));
 
     t.mock.timers.tick(15_000);
     assert.equal(new TextDecoder().decode((await readNext(reader)).value), ': heartbeat\n\n');

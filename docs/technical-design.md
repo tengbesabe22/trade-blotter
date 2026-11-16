@@ -59,7 +59,7 @@ model, without separate access/refresh tokens.
 
 | Policy | Behavior |
 | --- | --- |
-| Session lifetime | Maximum 8 hours; expires after 5 minutes without user activity. |
+| Session lifetime | Maximum 8 hours; expires after 15 minutes without user activity. |
 | Background activity | SSE, lookups and automatic snapshot reads do not extend idle time. |
 | Browser restoration | One `/me` request on startup restores the signed-in user; no polling. |
 | Browser protection | SameSite cookie, HTTPS/Secure cookie in production, trusted Origin for mutations. |

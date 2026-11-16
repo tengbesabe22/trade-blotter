@@ -47,6 +47,7 @@ for (const [path, method, headers] of [
     });
 
     assert.equal(response.status, 204);
+    assert.equal(response.headers.get('Access-Control-Max-Age'), '600');
     assert.equal(response.headers.get('Access-Control-Allow-Origin'), origin);
     assert.equal(response.headers.get('Access-Control-Allow-Credentials'), 'true');
     assert.ok(response.headers.get('Access-Control-Allow-Methods')?.split(',').includes(method));

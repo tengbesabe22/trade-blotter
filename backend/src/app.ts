@@ -35,6 +35,8 @@ export function createApp(
   app.use('/api/*', cors({
     origin: options.origin,
     credentials: true,
+    // Cache browser preflight permission for 10 minutes; requests still authenticate.
+    maxAge: 10 * 60,
     allowMethods: ['GET', 'POST', 'PATCH', 'OPTIONS'],
     allowHeaders: ['Content-Type', 'Idempotency-Key', 'X-Session-Activity'],
   }));
