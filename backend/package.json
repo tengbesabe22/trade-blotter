@@ -6,9 +6,9 @@
     "build": "tsc && node build.mjs",
     "start": "node dist/index.js",
     "typecheck": "tsc -p tsconfig.test.json",
-    "test": "tsx --test test/*.test.ts",
-    "test:trades": "tsx --test test/trades.test.ts",
-    "test:trade-create": "tsx --test test/trade-create.test.ts"
+    "test": "tsx --test \"test/**/*.test.ts\"",
+    "test:trades": "tsx --test test/routes/trade-list-routes.test.ts",
+    "test:trade-create": "tsx --test test/routes/trade-create.test.ts"
   },
   "dependencies": {
     "@hono/node-server": "^2.1.3",
