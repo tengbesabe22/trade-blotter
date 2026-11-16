@@ -1,4 +1,11 @@
 api.teng.website {
+	# Compress JSON responses; keep the SSE stream uncompressed.
+	encode gzip {
+		match {
+			header Content-Type application/json*
+		}
+	}
+
 	# Caddy flushes text/event-stream responses immediately for SSE.
 	reverse_proxy backend:3000
 }
