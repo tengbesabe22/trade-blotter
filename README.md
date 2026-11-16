@@ -37,7 +37,34 @@ See [Technical Design](docs/technical-design.md) for the complete flows.
 
 ## Run locally
 
-Requires Node **24.14.0**, pnpm **12.11.2** and Docker with Compose.
+### Prerequisites
+
+Install these tools before cloning the repository:
+
+| Tool | Installation |
+| --- | --- |
+| Git | Follow the [Git installation guide](https://git-scm.com/install/) for Windows, macOS or Linux. |
+| Node.js **24.14.0** | Install this version from the [Node.js downloads](https://nodejs.org/en/download), matching `.node-version`. Node.js includes npm. |
+| Docker with Compose | Install [Docker Desktop](https://docs.docker.com/compose/install/) and start it before running the app. Linux users can alternatively use Docker Engine with the Compose plugin. |
+| pnpm **12.11.2** | After installing Node.js, run the command below. See the [pnpm installation guide](https://pnpm.io/installation) for alternatives. |
+
+```sh
+npm install --global pnpm@12.11.2
+```
+
+Check that the tools are available in your terminal:
+
+```sh
+git --version
+node --version
+pnpm --version
+docker --version
+docker compose version
+```
+
+PostgreSQL runs in Docker; a separate local PostgreSQL installation is unnecessary.
+
+### Setup
 
 ```sh
 git clone https://github.com/tengbesabe22/trade-blotter.git
