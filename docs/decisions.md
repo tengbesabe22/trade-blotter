@@ -35,9 +35,10 @@ process-local delivery architecture; the scaling path below addresses it.
   administration and global audit search remain deferred.
 - **Evidence:** isolated tests do not prove live-database concurrency/rollback or
   production capacity. The default-page index has local query-plan evidence;
-  client p50/p95/p99 load measurements and deployed behavior remain unverified.
-- **Deployment:** AWS hosting and continuous deployment remain pending. Local
-  container configuration does not establish production readiness.
+  client p50/p95/p99 load measurements remain pending. Manual browser checks are
+  not capacity benchmarks.
+- **Deployment:** Vercel, Lightsail/Caddy and Neon are deployed. Backend releases
+  are manual; continuous deployment, failover and production hardening remain work.
 
 ## Production path
 

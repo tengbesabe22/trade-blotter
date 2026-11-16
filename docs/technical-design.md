@@ -247,8 +247,9 @@ Structured JSON logs cover HTTP outcomes, outbox failures/retries and SSE lifecy
 Request, connection and change identifiers connect related logs. Credentials,
 session tokens, identities and financial payloads are excluded from these logs.
 
-Server timing does not prove browser receipt or end-to-end latency. Client
-p50/p95/p99 measurements and deployment verification remain pending.
+Server timing does not prove browser receipt or end-to-end latency. Deployed
+browser smoke checks are separate from client p50/p95/p99 load measurements,
+which remain pending. See [Deployment](deployment.md) for hosting and commands.
 
 ### Testing
 
