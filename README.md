@@ -178,3 +178,4 @@ See [Deployment](docs/deployment.md) for configuration and commands.
 | [Real-time Updates](docs/realtime.md) | Event delivery, frontend merging and reconnect recovery. |
 | [Decisions and Scaling](docs/decisions.md) | Alternatives, accepted limits and the production path. |
 | [Deployment](docs/deployment.md) | Hosting services, configuration, Caddy and deployment commands. |
+| [AI Usage](docs/ai-usage-report.md) | Tools, developer/AI contributions, decisions and the significant-prompt log. |
