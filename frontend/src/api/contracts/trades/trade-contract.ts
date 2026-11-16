@@ -5,6 +5,7 @@ export const tradeResponseSchema = z.object({
   id: z.uuid(),
   symbol: z.string().min(1).max(12),
   side: z.enum(['BUY', 'SELL']),
+  // Unsigned decimal strings without leading zeros: exactly 6 places for quantity, 4 for price.
   quantity: z.string().regex(/^(0|[1-9]\d*)\.\d{6}$/),
   price: z.string().regex(/^(0|[1-9]\d*)\.\d{4}$/),
   trader: z.string().min(1).max(120),

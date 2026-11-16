@@ -2,6 +2,8 @@ import { z } from 'zod';
 import { tradeResponseSchema } from './trade-contract';
 
 function decimalInput(label: string, scale: number, maximum: bigint) {
+  // 0 or 1–10 whole digits without leading zeros; an optional fraction has 1–scale digits.
+  // Signs, spaces and exponent notation are rejected; the range is checked below.
   return z.string()
     .regex(new RegExp('^(0|[1-9]\\d{0,9})(\\.\\d{1,' + scale + '})?$'),
       label + ' must be a decimal with at most ' + scale + ' decimal places.')

@@ -25,6 +25,7 @@ type FormValues = ReturnType<typeof formValues>;
 
 function comparableDecimal(value: string) {
   // Compare exact strings without floating-point rounding: 227.4500 equals 227.45.
+  // Strip trailing fractional zeros, then the decimal point if no fraction remains.
   return value.includes('.') ? value.replace(/0+$/, '').replace(/\.$/, '') : value;
 }
 

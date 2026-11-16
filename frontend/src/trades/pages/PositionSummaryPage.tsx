@@ -4,7 +4,9 @@ import type { SymbolSummary } from '../../api/contracts/trades/trade-summary-con
 // Format the string digits directly: converting large quantities to Number loses precision.
 function quantity(value: string): string {
   const [whole, fraction = ''] = value.split('.');
+  // Remove trailing fractional zeros (e.g. 500000 becomes 5).
   const decimals = fraction.replace(/0+$/, '');
+  // Insert a comma before each group of three remaining whole digits: 12345 becomes 12,345.
   return whole!.replace(/\B(?=(\d{3})+(?!\d))/g, ',') + (decimals ? '.' + decimals : '');
 }
 

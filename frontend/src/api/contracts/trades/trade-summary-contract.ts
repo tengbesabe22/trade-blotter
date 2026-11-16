@@ -1,9 +1,11 @@
 import { z } from 'zod';
 import { tradeResponseSchema } from './trade-contract';
 
-// Bounds follow the summary columns: Decimal(28,6) quantities and Decimal(38,10) values.
+// Unsigned decimals without leading zeros: up to 22 whole digits + 6 fractional digits
+// for quantities, or 28 + 10 for values, matching the database columns.
 const summaryQuantitySchema = z.string().regex(/^(0|[1-9]\d{0,21})\.\d{6}$/);
 const summaryValueSchema = z.string().regex(/^(0|[1-9]\d{0,27})\.\d{10}$/);
+// Same quantity format, with an optional minus sign for short positions.
 const netQuantitySchema = z.string().regex(/^-?(0|[1-9]\d{0,21})\.\d{6}$/)
   .refine((value) => value !== '-0.000000', 'Flat positions must use unsigned zero.');
 
