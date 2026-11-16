@@ -1,7 +1,7 @@
 import { useCallback, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { tradeApi } from '../api/trade-api';
-import type { SymbolSummary } from '../api/trade-summary-contract';
+import { tradeApi } from '../api/trades/trade-api';
+import type { SymbolSummary } from '../api/contracts/trades/trade-summary-contract';
 import { mergePositionSummaries } from './trade-summary-merge';
 
 export const positionSummaryQueryKey = ['position-summaries'] as const;

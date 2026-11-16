@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import test, { type TestContext } from 'node:test';
 import { ZodError } from 'zod';
 import { ApiError } from '../src/api/api-client';
-import { defaultTradeListQuery } from '../src/api/trade-contract';
-import { tradeApi } from '../src/api/trade-api';
+import { defaultTradeListQuery } from '../src/api/contracts/trades/trade-contract';
+import { tradeApi } from '../src/api/trades/trade-api';
 import { sampleTrade, cancelledTrade, tradePage } from './trade-fixtures';
 
 function stubResponse(t: TestContext, response: Response) {

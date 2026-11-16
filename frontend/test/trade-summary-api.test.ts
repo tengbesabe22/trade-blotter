@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { tradeApi } from '../src/api/trade-api';
+import { tradeApi } from '../src/api/trades/trade-api';
 import { ApiError } from '../src/api/api-client';
 import { sampleSummary, summaryResponse } from './trade-summary-fixtures';
 

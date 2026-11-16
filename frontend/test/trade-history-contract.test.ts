@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { tradeHistoryEntrySchema, tradeHistoryResponseSchema } from '../src/api/trade-history-contract';
+import { tradeHistoryEntrySchema, tradeHistoryResponseSchema } from '../src/api/contracts/trades/trade-history-contract';
 import { createdHistory, amendedHistory, cancelledHistory, sampleHistory } from './trade-history-fixtures';
 import { cancelledTrade } from './trade-fixtures';
 

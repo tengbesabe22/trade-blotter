@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { ApiError } from '../src/api/api-client';
-import { tradeApi } from '../src/api/trade-api';
+import { tradeApi } from '../src/api/trades/trade-api';
 import { tradeOptions } from './trade-fixtures';
 
 test('filter options use the session cookie, preserve only the contract and forward cancellation', async (t) => {

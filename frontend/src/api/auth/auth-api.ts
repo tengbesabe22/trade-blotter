@@ -1,5 +1,5 @@
-import { ApiError, apiRequest } from './api-client';
-import { authResponseSchema, type AuthResponse, type LoginRequest } from './auth-contract';
+import { ApiError, apiRequest } from '../api-client';
+import { authResponseSchema, type AuthResponse, type LoginRequest } from '../contracts/auth/auth-contract';
 
 async function readAuthResponse(response: Response): Promise<AuthResponse> {
   const body: unknown = await response.json().catch(() => null);

@@ -1,4 +1,4 @@
-import type { Trade } from '../src/api/trade-contract';
+import type { Trade } from '../src/api/contracts/trades/trade-contract';
 
 export const signedInTrader = {
   id: 'd197282d-99ca-4260-833a-702f97d1cba1',

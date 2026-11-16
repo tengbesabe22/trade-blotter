@@ -4,7 +4,7 @@ import { JSDOM } from 'jsdom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { TradesPage } from '../src/trades/TradesPage';
 import { TradeWorkspace } from '../src/trades/TradeWorkspace';
-import type { SymbolSummary } from '../src/api/trade-summary-contract';
+import type { SymbolSummary } from '../src/api/contracts/trades/trade-summary-contract';
 import { signedInTrader, sampleTrade, tradePage, tradeOptions } from './trade-fixtures';
 import { sampleSummary, shortSummary, flatSummary, summaryResponse } from './trade-summary-fixtures';
 

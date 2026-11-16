@@ -5,7 +5,7 @@ import { AmendTradeForm } from '../src/trades/AmendTradeForm';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { TradesPage } from '../src/trades/TradesPage';
 import type { LiveTradePage } from '../src/trades/trade-merge';
-import type { Trade } from '../src/api/trade-contract';
+import type { Trade } from '../src/api/contracts/trades/trade-contract';
 import { signedInTrader, sampleTrade, cancelledTrade, tradePage, tradeOptions } from './trade-fixtures';
 
 const dom = new JSDOM('<!doctype html><html><body></body></html>', {

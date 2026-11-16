@@ -1,4 +1,4 @@
-import type { SymbolSummary } from '../src/api/trade-summary-contract';
+import type { SymbolSummary } from '../src/api/contracts/trades/trade-summary-contract';
 
 export const sampleSummary: SymbolSummary = {
   instrumentId: '7768fed5-b612-4844-8b84-e9db63a31d05', symbol: 'AAPL', currency: 'USD',

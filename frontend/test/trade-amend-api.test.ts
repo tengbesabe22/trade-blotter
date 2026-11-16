@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import test, { type TestContext } from 'node:test';
 import { ApiError } from '../src/api/api-client';
-import { tradeApi } from '../src/api/trade-api';
-import { amendTradeConflictSchema } from '../src/api/trade-amend-contract';
+import { tradeApi } from '../src/api/trades/trade-api';
+import { amendTradeConflictSchema } from '../src/api/contracts/trades/trade-amend-contract';
 import { sampleTrade, cancelledTrade } from './trade-fixtures';
 
 const request = { expectedVersion: 1, changes: { price: '228.5' } };

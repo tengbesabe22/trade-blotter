@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { tradeChangeSchema } from '../src/api/trade-stream-contract';
+import { tradeChangeSchema } from '../src/api/contracts/trades/trade-stream-contract';
 import { sampleTrade } from './trade-fixtures';
 
 const summary = {

@@ -1,9 +1,9 @@
 import { useEffect, useEffectEvent, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { tradeApi } from '../api/trade-api';
+import { tradeApi } from '../api/trades/trade-api';
 import { apiUrl } from '../api/api-url';
-import type { Trade, TradeListQuery } from '../api/trade-contract';
-import { streamReadySchema, tradeChangeSchema } from '../api/trade-stream-contract';
+import type { Trade, TradeListQuery } from '../api/contracts/trades/trade-contract';
+import { streamReadySchema, tradeChangeSchema } from '../api/contracts/trades/trade-stream-contract';
 import { usePositionSummaries, positionSummaryQueryKey } from './usePositionSummaries';
 import { isLiveFirstPage, mergeLiveTradePage, mergeNewestTrades, type LiveTradePage } from './trade-merge';
 

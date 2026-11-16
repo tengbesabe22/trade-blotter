@@ -5,7 +5,7 @@ import { JSDOM } from 'jsdom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { TradeListControls } from '../src/trades/TradeListControls';
 import { CreateTradeForm } from '../src/trades/CreateTradeForm';
-import { defaultTradeListQuery, type TradeListQuery } from '../src/api/trade-contract';
+import { defaultTradeListQuery, type TradeListQuery } from '../src/api/contracts/trades/trade-contract';
 import { tradeOptions } from './trade-fixtures';
 
 const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'http://localhost:5173' });

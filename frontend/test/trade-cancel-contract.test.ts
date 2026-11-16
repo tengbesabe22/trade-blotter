@@ -4,7 +4,7 @@ import {
   cancelTradeRequestSchema,
   cancelTradeResponseSchema,
   cancelTradeConflictSchema,
-} from '../src/api/trade-cancel-contract';
+} from '../src/api/contracts/trades/trade-cancel-contract';
 import { sampleTrade, cancelledTrade } from './trade-fixtures';
 
 const request = { expectedVersion: 1 };

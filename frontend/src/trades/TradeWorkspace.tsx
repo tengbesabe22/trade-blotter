@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import type { CurrentUser } from '../api/auth-contract';
+import type { CurrentUser } from '../api/contracts/auth/auth-contract';
 import { CreateTradeForm } from './CreateTradeForm';
 import { TradesPage } from './TradesPage';
 

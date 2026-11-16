@@ -1,4 +1,4 @@
-import type { TradeHistoryEntry, TradeHistoryResponse } from '../src/api/trade-history-contract';
+import type { TradeHistoryEntry, TradeHistoryResponse } from '../src/api/contracts/trades/trade-history-contract';
 import { sampleTrade } from './trade-fixtures';
 
 const actor = { id: sampleTrade.ownerId, displayName: sampleTrade.trader };

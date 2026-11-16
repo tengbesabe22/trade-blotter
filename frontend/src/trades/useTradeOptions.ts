@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { tradeApi } from '../api/trade-api';
+import { tradeApi } from '../api/trades/trade-api';
 
 export function useTradeOptions() {
   return useQuery({

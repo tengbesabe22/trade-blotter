@@ -1,7 +1,7 @@
 import { useState, type SubmitEvent } from 'react';
 import { ApiError } from '../api/api-client';
-import { authApi } from '../api/auth-api';
-import type { CurrentUser } from '../api/auth-contract';
+import { authApi } from '../api/auth/auth-api';
+import type { CurrentUser } from '../api/contracts/auth/auth-contract';
 
 type LoginFormProps = {
   onAuthenticated: (user: CurrentUser) => void;

@@ -1,8 +1,8 @@
 import { useMemo } from 'react';
 import { CellStyleModule, ClientSideRowModelModule, themeQuartz, type ColDef } from 'ag-grid-community';
 import { AgGridProvider, AgGridReact, type CustomCellRendererProps } from 'ag-grid-react';
-import type { CurrentUser } from '../api/auth-contract';
-import type { Trade } from '../api/trade-contract';
+import type { CurrentUser } from '../api/contracts/auth/auth-contract';
+import type { Trade } from '../api/contracts/trades/trade-contract';
 import { TradeActionButton } from './TradeActionButton';
 
 const modules = [ClientSideRowModelModule, CellStyleModule];

@@ -4,7 +4,7 @@ import {
   amendTradeRequestSchema,
   amendTradeResponseSchema,
   amendTradeConflictSchema,
-} from '../src/api/trade-amend-contract';
+} from '../src/api/contracts/trades/trade-amend-contract';
 import { sampleTrade } from './trade-fixtures';
 
 const request = { expectedVersion: 1, changes: { price: '228.5' } };

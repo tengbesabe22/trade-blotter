@@ -3,19 +3,19 @@ import {
   cancelTradeRequestSchema,
   cancelTradeResponseSchema,
   type CancelTradeRequest,
-} from './trade-cancel-contract';
+} from '../contracts/trades/trade-cancel-contract';
 import {
   amendTradeIdSchema,
   amendTradeRequestSchema,
   amendTradeResponseSchema,
   type AmendTradeRequest,
-} from './trade-amend-contract';
-import { createTradeRequestSchema, createTradeResponseSchema, type CreateTradeRequest } from './trade-create-contract';
-import { tradeFilterOptionsSchema, type TradeFilterOptions } from './trade-filter-options-contract';
-import { tradeHistoryIdSchema, tradeHistoryResponseSchema, type TradeHistoryResponse } from './trade-history-contract';
-import { tradeSummaryResponseSchema, type TradeSummaryResponse } from './trade-summary-contract';
-import { ApiError, apiRequest } from './api-client';
-import { defaultTradeListQuery, tradeListQuerySchema, tradeListResponseSchema, type TradeListQuery, type TradeListResponse } from './trade-contract';
+} from '../contracts/trades/trade-amend-contract';
+import { createTradeRequestSchema, createTradeResponseSchema, type CreateTradeRequest } from '../contracts/trades/trade-create-contract';
+import { tradeFilterOptionsSchema, type TradeFilterOptions } from '../contracts/trades/trade-filter-options-contract';
+import { tradeHistoryIdSchema, tradeHistoryResponseSchema, type TradeHistoryResponse } from '../contracts/trades/trade-history-contract';
+import { tradeSummaryResponseSchema, type TradeSummaryResponse } from '../contracts/trades/trade-summary-contract';
+import { ApiError, apiRequest } from '../api-client';
+import { defaultTradeListQuery, tradeListQuerySchema, tradeListResponseSchema, type TradeListQuery, type TradeListResponse } from '../contracts/trades/trade-contract';
 
 export const tradeApi = {
   summaries: async (

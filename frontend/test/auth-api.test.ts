@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test, { type TestContext } from 'node:test';
 import { ApiError } from '../src/api/api-client';
-import { authApi } from '../src/api/auth-api';
+import { authApi } from '../src/api/auth/auth-api';
 
 const user = { id: 'user-1', displayName: 'JSMITH', role: 'TRADER' };
 

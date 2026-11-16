@@ -1,4 +1,4 @@
-import type { Trade, TradeListQuery, TradeListResponse } from '../api/trade-contract';
+import type { Trade, TradeListQuery, TradeListResponse } from '../api/contracts/trades/trade-contract';
 
 // Local cache metadata, not part of HTTP. needsRefill requests reconciliation of page order, membership or cursor.
 export type LiveTradePage = TradeListResponse & { hasNewTrades?: boolean; needsRefill?: boolean };

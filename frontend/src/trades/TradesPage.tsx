@@ -1,10 +1,10 @@
 import { lazy, Suspense, useCallback, useRef, useState, type ReactNode, type KeyboardEvent } from 'react';
-import type { CurrentUser } from '../api/auth-contract';
+import type { CurrentUser } from '../api/contracts/auth/auth-contract';
 import { AmendTradeForm } from './AmendTradeForm';
 import { CancelTradePanel } from './CancelTradePanel';
 import { ApiError } from '../api/api-client';
 import { useLiveTrades, type StreamStatus } from './useLiveTrades';
-import { defaultTradeListQuery, type TradeListQuery, type Trade } from '../api/trade-contract';
+import { defaultTradeListQuery, type TradeListQuery, type Trade } from '../api/contracts/trades/trade-contract';
 import { TradeListControls } from './TradeListControls';
 import { TradePagination } from './TradePagination';
 import { TradeHistoryPage } from './TradeHistoryPage';

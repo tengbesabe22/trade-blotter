@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, type SubmitEvent } from 'react';
 import { ApiError } from '../api/api-client';
-import { cancelTradeConflictSchema, cancelTradeRequestSchema } from '../api/trade-cancel-contract';
-import { tradeApi } from '../api/trade-api';
-import type { Trade } from '../api/trade-contract';
+import { cancelTradeConflictSchema, cancelTradeRequestSchema } from '../api/contracts/trades/trade-cancel-contract';
+import { tradeApi } from '../api/trades/trade-api';
+import type { Trade } from '../api/contracts/trades/trade-contract';
 
 type CancelTradePanelProps = {
   trade: Trade;

@@ -1,4 +1,4 @@
-import type { TradeListResponse } from '../api/trade-contract';
+import type { TradeListResponse } from '../api/contracts/trades/trade-contract';
 
 type TradePaginationProps = {
   pageInfo: TradeListResponse['pageInfo'] | undefined;
