@@ -17,6 +17,8 @@ function decimalBoundary(scale: number, maximum: bigint) {
 }
 
 // Keep each sort field paired with its value type; decimals stay exact strings.
+// Example: { sortBy: 'price', value: '227.4500', id: 'f1550000-0000-4000-8000-000000100001' }.
+// The next page starts beyond this price/ID pair in the requested sort direction.
 const boundarySchema = z.discriminatedUnion('sortBy', [
   z.strictObject({ sortBy: z.literal('tradeDate'), value: z.iso.datetime({ precision: 3 }), id: z.uuid() }),
   z.strictObject({

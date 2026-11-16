@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { TradeResponse } from '../trade-contract';
+import { tradeResponseSchema } from '../trade-contract';
 
 // Cancellation sets status on the server; clients provide only a version and reason.
 export const cancelTradeRequestSchema = z.strictObject({
@@ -22,7 +22,12 @@ export type CancelTradeCommand = {
   input: NormalizedCancelTradeRequest;
 };
 
-export type CancelTradeResult =
-  | { kind: 'cancelled'; body: { trade: TradeResponse } }
-  | { kind: 'conflict'; currentTrade: TradeResponse }
-  | { kind: 'not-found' | 'forbidden' };
+// Repository outcomes; the route maps kind to an HTTP status and response body.
+export const cancelTradeResultSchema = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('cancelled'), body: z.strictObject({ trade: tradeResponseSchema }) }),
+  z.strictObject({ kind: z.literal('conflict'), currentTrade: tradeResponseSchema }),
+  z.strictObject({ kind: z.literal('not-found') }),
+  z.strictObject({ kind: z.literal('forbidden') }),
+]);
+
+export type CancelTradeResult = z.infer<typeof cancelTradeResultSchema>;

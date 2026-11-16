@@ -8,7 +8,13 @@ export type TradeHistoryRecord = Prisma.TradeAuditGetPayload<{
 
 const changeFields = ['side', 'quantity', 'price', 'book', 'counterparty', 'tradeDate', 'status'] as const;
 
-function describeChanges(current: TradeResponse, previous: TradeResponse | undefined): TradeHistoryChange[] | null {
+/** Compares adjacent snapshots: e.g. v3 price 230 vs v2 price 227 produces one price change.
+ * Returns [] for creation, or null when the immediately preceding version is missing.
+ */
+function describeChanges(
+  current: TradeResponse,
+  previous: TradeResponse | undefined,
+): TradeHistoryChange[] | null {
   if (current.version === 1) return [];
   // For example, comparing v4 with v2 cannot tell us which edits happened in v4.
   if (!previous || previous.version !== current.version - 1) return null;

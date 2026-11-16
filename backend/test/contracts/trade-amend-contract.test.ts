@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { amendTradeRequestSchema } from '../../src/trades/amendments/trade-amend-contract';
+import { amendTradeRequestSchema, amendTradeResultSchema } from '../../src/trades/amendments/trade-amend-contract';
 
 const request = { expectedVersion: 1, changes: { price: '228.5' } };
 
@@ -103,5 +103,35 @@ test('supplied fields retain existing type, precision, range and timestamp rules
     { book: 42 }, { book: 'B'.repeat(65) }, { counterparty: 'C'.repeat(121) },
   ]) {
     assert.equal(amendTradeRequestSchema.safeParse({ ...request, changes }).success, false);
+  }
+});
+
+
+test('repository results distinguish success, current-trade conflicts and rejection reasons', () => {
+  const trade = {
+    id: 'f1550000-0000-4000-8000-000000100001',
+    symbol: 'AAPL', side: 'BUY', quantity: '5000.000000', price: '228.5000',
+    trader: 'JSMITH', ownerId: 'd197282d-99ca-4260-833a-702f97d1cba1',
+    book: null, counterparty: null, tradeDate: '2026-08-18T09:15:23.000Z',
+    status: 'ACTIVE', version: 2,
+    createdAt: '2026-08-18T09:16:00.000Z', updatedAt: '2026-08-18T09:20:00.000Z',
+  };
+
+  for (const result of [
+    { kind: 'amended', body: { trade } },
+    { kind: 'conflict', currentTrade: trade },
+    ...['not-found', 'forbidden', 'no-changes'].map((kind) => ({ kind })),
+  ]) {
+    assert.deepEqual(amendTradeResultSchema.parse(result), result);
+  }
+
+  for (const result of [
+    { kind: 'unknown' },
+    { kind: 'amended' },
+    { kind: 'conflict' },
+    { kind: 'amended', body: { trade: { ...trade, price: 228.5 } } },
+    { kind: 'forbidden', currentTrade: trade },
+  ]) {
+    assert.equal(amendTradeResultSchema.safeParse(result).success, false);
   }
 });

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { cancelTradeRequestSchema } from '../../src/trades/cancellations/trade-cancel-contract';
+import { cancelTradeRequestSchema, cancelTradeResultSchema } from '../../src/trades/cancellations/trade-cancel-contract';
 
 const request = { expectedVersion: 3 };
 
@@ -51,5 +51,35 @@ test('cancel rejects trade edits, server-controlled fields and other unknown pro
 test('cancel rejects malformed request shapes', () => {
   for (const input of [undefined, null, [], 'cancel', 3, {}]) {
     assert.equal(cancelTradeRequestSchema.safeParse(input).success, false);
+  }
+});
+
+
+test('repository results distinguish success, current-trade conflicts and rejection reasons', () => {
+  const trade = {
+    id: 'f1550000-0000-4000-8000-000000100001',
+    symbol: 'AAPL', side: 'BUY', quantity: '5000.000000', price: '228.5000',
+    trader: 'JSMITH', ownerId: 'd197282d-99ca-4260-833a-702f97d1cba1',
+    book: null, counterparty: null, tradeDate: '2026-08-18T09:15:23.000Z',
+    status: 'CANCELLED', version: 2,
+    createdAt: '2026-08-18T09:16:00.000Z', updatedAt: '2026-08-18T09:20:00.000Z',
+  };
+
+  for (const result of [
+    { kind: 'cancelled', body: { trade } },
+    { kind: 'conflict', currentTrade: trade },
+    ...['not-found', 'forbidden'].map((kind) => ({ kind })),
+  ]) {
+    assert.deepEqual(cancelTradeResultSchema.parse(result), result);
+  }
+
+  for (const result of [
+    { kind: 'unknown' },
+    { kind: 'cancelled' },
+    { kind: 'conflict' },
+    { kind: 'cancelled', body: { trade: { ...trade, price: 228.5 } } },
+    { kind: 'forbidden', currentTrade: trade },
+  ]) {
+    assert.equal(cancelTradeResultSchema.safeParse(result).success, false);
   }
 });

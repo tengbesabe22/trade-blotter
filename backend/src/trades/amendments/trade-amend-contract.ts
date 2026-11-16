@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { TradeResponse } from '../trade-contract';
+import { tradeResponseSchema } from '../trade-contract';
 import { createTradeRequestSchema } from '../creation/trade-create-contract';
 
 const createFields = createTradeRequestSchema.shape;
@@ -51,7 +51,13 @@ export type AmendTradeCommand = {
   input: NormalizedAmendTradeRequest;
 };
 
-export type AmendTradeResult =
-  | { kind: 'amended'; body: { trade: TradeResponse } }
-  | { kind: 'conflict'; currentTrade: TradeResponse }
-  | { kind: 'not-found' | 'forbidden' | 'no-changes' };
+// Repository outcomes; the route maps kind to an HTTP status and response body.
+export const amendTradeResultSchema = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('amended'), body: z.strictObject({ trade: tradeResponseSchema }) }),
+  z.strictObject({ kind: z.literal('conflict'), currentTrade: tradeResponseSchema }),
+  z.strictObject({ kind: z.literal('not-found') }),
+  z.strictObject({ kind: z.literal('forbidden') }),
+  z.strictObject({ kind: z.literal('no-changes') }),
+]);
+
+export type AmendTradeResult = z.infer<typeof amendTradeResultSchema>;
